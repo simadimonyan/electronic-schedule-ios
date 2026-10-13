@@ -60,8 +60,8 @@
       "kind" : "remoteSourceControl",
       "location" : "https://gitflic.ru/project/rustore/rustore-remote-config-swift.git",
       "state" : {
-        "revision" : "7cb1d64454275b1382224d749e6a7eb0d7684cf7",
-        "version" : "1.0.0"
+        "revision" : "3f344b4419c05f43b8ed45ab30d7935418143888",
+        "version" : "1.2.2"
       }
     },
     {
