@@ -112,15 +112,37 @@ enum SurveysDebug {
     }
 
     /// `-surveysForce` (или `-surveysForce YES`, env SURVEYS_FORCE=1): показать лист сразу, без лимитов
-    static var force: Bool {
+    static var force: Bool { flag("-surveysForce", env: "SURVEYS_FORCE") }
+
+    /// Демонстрация: `-surveysRespondent ios:demo-1` — свой respondent (чтобы не ловить 409)
+    static var respondentOverride: String? {
+        #if DEBUG
+        if let raw = UserDefaults.standard.string(forKey: "surveysRespondent")?.trimmingCharacters(in: .whitespaces), !raw.isEmpty {
+            return raw
+        }
+        #endif
+        return nil
+    }
+
+    /// Демонстрация: `-surveysDemoFill` — заполнить форму примерными ответами
+    static var demoFill: Bool { flag("-surveysDemoFill", env: "SURVEYS_DEMO_FILL") }
+    /// Демонстрация: `-surveysDemoSubmit` — через 2 с после заполнения нажать «Отправить»
+    static var demoSubmit: Bool { flag("-surveysDemoSubmit", env: "SURVEYS_DEMO_SUBMIT") }
+    /// Демонстрация: `-surveysOpenSettings` — открыть настройки (видно «Оставить отзыв»)
+    static var openSettings: Bool { flag("-surveysOpenSettings", env: "SURVEYS_OPEN_SETTINGS") }
+
+    /// Запуск для демонстрации опросов (любой из флагов выше)
+    static var isDemoLaunch: Bool { force || demoFill || demoSubmit || openSettings }
+
+    /// Флаг запуска: без значения или со значением YES/true/1; либо переменная окружения
+    private static func flag(_ name: String, env: String) -> Bool {
         #if DEBUG
         let args = ProcessInfo.processInfo.arguments
-        if let i = args.firstIndex(of: "-surveysForce") {
-            // Флаг без значения или со значением YES/true/1
+        if let i = args.firstIndex(of: name) {
             let next = i + 1 < args.count ? args[i + 1].lowercased() : ""
             return next.isEmpty || next.hasPrefix("-") || ["yes", "true", "1"].contains(next)
         }
-        if let env = ProcessInfo.processInfo.environment["SURVEYS_FORCE"], ["1", "yes", "true"].contains(env.lowercased()) {
+        if let value = ProcessInfo.processInfo.environment[env], ["1", "yes", "true"].contains(value.lowercased()) {
             return true
         }
         #endif

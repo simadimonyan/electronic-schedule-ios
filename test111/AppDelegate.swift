@@ -64,6 +64,11 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
         let notificationManager = NotificationManager.shared
         notificationManager.setupDefaultSettings()
         
+        #if DEBUG
+        // Демонстрация опросов: системный запрос поверх листа мешает снимкам экрана
+        if SurveysDebug.isDemoLaunch { return }
+        #endif
+
         // Запрашиваем разрешение на уведомления при первом запуске
         UNUserNotificationCenter.current().getNotificationSettings { settings in
             if settings.authorizationStatus == .notDetermined {

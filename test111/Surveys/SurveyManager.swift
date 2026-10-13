@@ -22,11 +22,13 @@ final class SurveyManager {
 
     private var isChecking = false
     private var forceShownThisLaunch = false
+    private var settingsOpenedThisLaunch = false
 
     // MARK: Кто отвечает
 
     /// `ios:<uuid установки>` — генерируется один раз и хранится в UserDefaults
     var respondent: String {
+        if let override = SurveysDebug.respondentOverride { return override }
         let defaults = UserDefaults.standard
         if let saved = defaults.string(forKey: Keys.respondent), !saved.isEmpty { return saved }
         let id = "ios:" + UUID().uuidString.lowercased()
@@ -66,6 +68,15 @@ final class SurveyManager {
 
     /// Вызывается при появлении главного экрана расписания
     func scheduleScreenDidAppear(from presenter: UIViewController) {
+        #if DEBUG
+        if SurveysDebug.openSettings && !settingsOpenedThisLaunch {
+            settingsOpenedThisLaunch = true
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) { [weak presenter] in
+                presenter?.navigationController?.pushViewController(SettingsViewController(), animated: true)
+            }
+            return
+        }
+        #endif
         if SurveysDebug.force && !forceShownThisLaunch {
             forceShownThisLaunch = true
             // Даём сплэшу и переходу закончиться

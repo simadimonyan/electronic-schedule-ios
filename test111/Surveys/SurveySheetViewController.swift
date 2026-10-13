@@ -177,6 +177,12 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
             self.quiz = quiz
             buildForm(quiz)
             updateSubmitState()
+            #if DEBUG
+            if SurveysDebug.demoFill && !demoApplied {
+                demoApplied = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.applyDemoAnswers(quiz) }
+            }
+            #endif
 
         case .done(let message):
             finished = true
@@ -565,6 +571,42 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         let rect = responder.convert(responder.bounds, to: scrollView).insetBy(dx: 0, dy: -16)
         DispatchQueue.main.async { self.scrollView.scrollRectToVisible(rect, animated: true) }
     }
+
+    // MARK: Демонстрация (только DEBUG)
+
+    private var demoApplied = false
+
+    #if DEBUG
+    /// Максимальная оценка, первые варианты, примерные тексты; лист в large
+    private func applyDemoAnswers(_ quiz: Quiz) {
+        let samples = ["Удобно, что расписание открывается сразу, без интернета",
+                       "Иногда виджет обновляется с задержкой"]
+        var textIndex = 0
+        for question in quiz.supportedQuestions {
+            switch question.questionType {
+            case .rating?: ratingAnswers[question.id] = question.ratingScale
+            case .single?: if let first = question.options.first { singleAnswers[question.id] = first.id }
+            case .multiple?: if let first = question.options.first { multipleAnswers[question.id] = [first.id] }
+            case .text?:
+                textAnswers[question.id] = samples[min(textIndex, samples.count - 1)]
+                textIndex += 1
+            case nil: break
+            }
+        }
+        // Перерисовываем форму с ответами
+        stack.arrangedSubviews.forEach { $0.removeFromSuperview() }
+        refreshers.removeAll()
+        buildForm(quiz)
+        updateSubmitState()
+        if #available(iOS 15.0, *), let sheet = navigationController?.sheetPresentationController {
+            sheet.animateChanges { sheet.selectedDetentIdentifier = .large }
+        }
+        // Кнопка «Отправить» закреплена внизу листа и всегда видна — прокручивать не нужно
+        if SurveysDebug.demoSubmit {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in self?.submitTapped() }
+        }
+    }
+    #endif
 
     // MARK: Вспомогательное
 

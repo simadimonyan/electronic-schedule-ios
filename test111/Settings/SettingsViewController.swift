@@ -1007,6 +1007,14 @@ class SettingsViewController: UIViewController {
         scrollView.layoutIfNeeded()
         contentView.layoutIfNeeded()
         CATransaction.commit()
+
+        #if DEBUG
+        // Демонстрация опросов: прокрутить к «Оставить отзыв»
+        if SurveysDebug.openSettings {
+            let rect = feedbackCardView.convert(feedbackCardView.bounds, to: scrollView).insetBy(dx: 0, dy: -20)
+            scrollView.scrollRectToVisible(rect, animated: true)
+        }
+        #endif
     }
     
     private func updateNavigationBarColors() {
