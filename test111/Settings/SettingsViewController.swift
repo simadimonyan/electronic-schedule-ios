@@ -200,6 +200,36 @@ class SettingsViewController: UIViewController {
         return label
     }()
 
+    // Карточка «Оставить отзыв» (опросы обратной связи)
+    let feedbackCardView: UIView = {
+        let view = UIView()
+        view.translatesAutoresizingMaskIntoConstraints = false
+        view.backgroundColor = .secondarySystemBackground
+        view.layer.cornerRadius = 12
+        view.layer.shadowColor = UIColor.black.cgColor
+        view.layer.shadowOpacity = 0.1
+        view.layer.shadowOffset = CGSize(width: 0, height: 2)
+        view.layer.shadowRadius = 4
+        return view
+    }()
+
+    let feedbackLabel: UILabel = {
+        let label = UILabel()
+        label.translatesAutoresizingMaskIntoConstraints = false
+        label.text = "Оставить отзыв"
+        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
+        label.textColor = .label
+        return label
+    }()
+
+    let feedbackChevron: UIImageView = {
+        let image = UIImageView(image: UIImage(systemName: "bubble.left.and.bubble.right"))
+        image.translatesAutoresizingMaskIntoConstraints = false
+        image.tintColor = .systemBlue
+        image.contentMode = .scaleAspectFit
+        return image
+    }()
+
     let notificationTimeLabel: UILabel = {
         let label = UILabel()
         label.translatesAutoresizingMaskIntoConstraints = false
@@ -415,6 +445,13 @@ class SettingsViewController: UIViewController {
         let aboutTap = UITapGestureRecognizer(target: self, action: #selector(showAbout))
         customCardView8.addGestureRecognizer(aboutTap)
 
+        // Карточка «Оставить отзыв» — под «О приложении»
+        contentView.addSubview(feedbackCardView)
+        feedbackCardView.addSubview(feedbackLabel)
+        feedbackCardView.addSubview(feedbackChevron)
+        let feedbackTap = UITapGestureRecognizer(target: self, action: #selector(showFeedback))
+        feedbackCardView.addGestureRecognizer(feedbackTap)
+
         // Настройка девятой кастомной ячейки для темы
         let customCardView9: UIView = {
             let view = UIView()
@@ -561,7 +598,20 @@ class SettingsViewController: UIViewController {
             footerLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
             footerLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
             footerLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            footerLabel.topAnchor.constraint(greaterThanOrEqualTo: customCardView8.bottomAnchor, constant: 24)
+            feedbackCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
+            feedbackCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
+            feedbackCardView.topAnchor.constraint(equalTo: customCardView8.bottomAnchor, constant: 20),
+            feedbackCardView.heightAnchor.constraint(equalToConstant: 60),
+
+            feedbackLabel.leadingAnchor.constraint(equalTo: feedbackCardView.leadingAnchor, constant: 16),
+            feedbackLabel.centerYAnchor.constraint(equalTo: feedbackCardView.centerYAnchor),
+
+            feedbackChevron.trailingAnchor.constraint(equalTo: feedbackCardView.trailingAnchor, constant: -16),
+            feedbackChevron.centerYAnchor.constraint(equalTo: feedbackCardView.centerYAnchor),
+            feedbackChevron.widthAnchor.constraint(equalToConstant: 24),
+            feedbackChevron.heightAnchor.constraint(equalToConstant: 24),
+
+            footerLabel.topAnchor.constraint(greaterThanOrEqualTo: feedbackCardView.bottomAnchor, constant: 24)
         ])
 
         // Загрузка состояния переключателей из UserDefaults
@@ -610,7 +660,7 @@ class SettingsViewController: UIViewController {
         // и не имеют никаких transform или смещений
         let allViews: [UIView] = [
             customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8
+            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
         ]
         for cardView in allViews {
             cardView.transform = .identity
@@ -706,6 +756,11 @@ class SettingsViewController: UIViewController {
         self.navigationController?.popViewController(animated: true)
     }
     
+    @objc private func showFeedback() {
+        MRMyTracker.trackEvent(name: "Открыть опрос из настроек")
+        SurveyManager.shared.openFromSettings(from: self)
+    }
+
     @objc private func showAbout() {
         MRMyTracker.trackEvent(name: "Открыть вкладку о приложении")
         let vc = AboutViewController()
@@ -910,7 +965,7 @@ class SettingsViewController: UIViewController {
         // Убеждаемся, что все элементы находятся на своих местах без transform
         let allViews: [UIView] = [
             customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8
+            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
         ]
         for cardView in allViews {
             cardView.transform = .identity
@@ -942,7 +997,7 @@ class SettingsViewController: UIViewController {
         // Убеждаемся, что все элементы находятся на своих местах
         let allViews: [UIView] = [
             customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8
+            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
         ]
         for cardView in allViews {
             cardView.transform = .identity

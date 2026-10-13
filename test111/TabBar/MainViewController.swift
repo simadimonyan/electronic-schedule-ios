@@ -98,6 +98,9 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
         
         // Показываем окно с информацией о виджетах через 10 секунд после запуска
         showWidgetInfoIfNeeded()
+
+        // Опрос обратной связи: проверка не чаще раза в сутки, с учётом «Не сейчас»
+        SurveyManager.shared.scheduleScreenDidAppear(from: self)
     }
     
     private func showWidgetInfoIfNeeded() {
