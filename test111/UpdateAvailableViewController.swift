@@ -13,106 +13,6 @@ final class UpdateAvailableViewController: UIViewController {
     private let trackViewUrl: String?
     private let trackId: Int?
     
-    private let stackView: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .vertical
-        stack.alignment = .center
-        stack.spacing = 20
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }()
-    
-    private let appIconImageView: UIImageView = {
-        let imageView = UIImageView()
-        imageView.translatesAutoresizingMaskIntoConstraints = false
-        imageView.contentMode = .scaleAspectFit
-        imageView.clipsToBounds = true
-        imageView.layer.cornerRadius = 16
-        imageView.layer.masksToBounds = true
-        return imageView
-    }()
-    
-    private let titleLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 24, weight: .bold)
-        label.textColor = .label
-        label.text = "Доступно обновление"
-        label.numberOfLines = 0
-        return label
-    }()
-    
-    private let messageLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 16, weight: .regular)
-        label.textColor = .secondaryLabel
-        label.text = "Вышла новая версия приложения. Обновите приложение для получения новых функций и исправлений."
-        label.numberOfLines = 0
-        return label
-    }()
-    
-    private let versionStackView: UIStackView = {
-        let stack = UIStackView()
-        stack.axis = .horizontal
-        stack.alignment = .center
-        stack.spacing = 12
-        stack.translatesAutoresizingMaskIntoConstraints = false
-        return stack
-    }()
-    
-    private let currentVersionLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 14, weight: .regular)
-        label.textColor = .secondaryLabel
-        return label
-    }()
-    
-    private let arrowLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.textColor = .secondaryLabel
-        label.text = "→"
-        return label
-    }()
-    
-    private let newVersionLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.textAlignment = .center
-        label.font = UIFont.systemFont(ofSize: 14, weight: .semibold)
-        label.textColor = .systemBlue
-        return label
-    }()
-    
-    private let updateButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.backgroundColor = .systemBlue
-        button.setTitle("Обновить", for: .normal)
-        button.setTitleColor(.white, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .semibold)
-        button.layer.cornerRadius = 14
-        button.contentEdgeInsets = UIEdgeInsets(top: 14, left: 0, bottom: 14, right: 0)
-        return button
-    }()
-    
-    private let laterButton: UIButton = {
-        let button = UIButton(type: .system)
-        button.translatesAutoresizingMaskIntoConstraints = false
-        button.setTitle("Позже", for: .normal)
-        button.setTitleColor(.secondaryLabel, for: .normal)
-        button.titleLabel?.font = UIFont.systemFont(ofSize: 17, weight: .regular)
-        button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 0, bottom: 12, right: 0)
-        return button
-    }()
-    
     init(appStoreVersion: String, trackViewUrl: String?, trackId: Int?) {
         self.appStoreVersion = appStoreVersion
         self.trackViewUrl = trackViewUrl
@@ -127,83 +27,67 @@ final class UpdateAvailableViewController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         setupUI()
-        loadAppIcon()
-        setupVersionLabels()
     }
-    
+
     private func setupUI() {
-        view.backgroundColor = .systemBackground
-        
-        view.addSubview(stackView)
-        
-        // Настройка версий
-        versionStackView.addArrangedSubview(currentVersionLabel)
-        versionStackView.addArrangedSubview(arrowLabel)
-        versionStackView.addArrangedSubview(newVersionLabel)
-        
-        // Добавляем элементы в stackView
-        stackView.addArrangedSubview(appIconImageView)
-        stackView.addArrangedSubview(titleLabel)
-        stackView.addArrangedSubview(messageLabel)
-        stackView.addArrangedSubview(versionStackView)
-        stackView.addArrangedSubview(updateButton)
-        stackView.addArrangedSubview(laterButton)
-        
-        // Настройка кнопок
-        updateButton.addTarget(self, action: #selector(updateTapped), for: .touchUpInside)
-        laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
-        
-        NSLayoutConstraint.activate([
-            // Stack view
-            stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 24),
-            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 24),
-            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -24),
-            stackView.bottomAnchor.constraint(lessThanOrEqualTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -24),
-            
-            // App icon
-            appIconImageView.widthAnchor.constraint(equalToConstant: 80),
-            appIconImageView.heightAnchor.constraint(equalToConstant: 80),
-            
-            // Buttons
-            updateButton.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
-            updateButton.trailingAnchor.constraint(equalTo: stackView.trailingAnchor),
-            
-            laterButton.leadingAnchor.constraint(equalTo: stackView.leadingAnchor),
-            laterButton.trailingAnchor.constraint(equalTo: stackView.trailingAnchor)
+        view.backgroundColor = DS.Color.bg
+
+        let image = UIImageView(image: UIImage(named: "IlloUpdate"))
+        image.contentMode = .scaleAspectFit
+        image.fixSize(width: 132, height: 132)
+        let badge = EyebrowPill("Версия \(appStoreVersion)", size: 10, showsDot: false)
+        let title = UILabel.display("Доступно обновление", size: 24, alignment: .center)
+        let message = UILabel.ds("Обновите приложение, чтобы расписание загружалось без ошибок и появились новые функции.", font: DS.Font.text(14), color: DS.Color.soft, lines: 0, lineHeight: 21, alignment: .center)
+
+        // Текущая → новая версия
+        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
+        let versions = UIStackView.ds(.horizontal, spacing: 10, alignment: .center, views: [
+            UILabel.ds("v\(currentVersion)", font: DS.Font.mono(13), color: DS.Color.soft),
+            UIImageView(image: DS.symbol("arrow.right", size: 12, weight: .semibold)),
+            UILabel.ds("v\(appStoreVersion)", font: DS.Font.mono(13, .bold), color: DS.Color.accent)
         ])
-        
-        // Настройка modal presentation как pageSheet
+        (versions.arrangedSubviews[1] as? UIImageView)?.tintColor = DS.Color.faint
+
+        let updateButton = DSButton("Обновить в App Store")
+        updateButton.onTap = { [weak self] in self?.updateTapped() }
+        let laterButton = DSButton("Позже", style: .ghost, height: 40, fontSize: 14)
+        laterButton.onTap = { [weak self] in self?.laterTapped() }
+
+        let col = UIStackView.ds(.vertical, spacing: 0, alignment: .center, views: [image, badge, title, message, versions, updateButton, laterButton])
+        col.setCustomSpacing(8, after: badge)
+        col.setCustomSpacing(6, after: title)
+        col.setCustomSpacing(14, after: message)
+        col.setCustomSpacing(20, after: versions)
+        col.setCustomSpacing(8, after: updateButton)
+        view.addSubview(col)
+        NSLayoutConstraint.activate([
+            col.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
+            col.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22),
+            col.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -22),
+            updateButton.widthAnchor.constraint(equalTo: col.widthAnchor),
+            laterButton.widthAnchor.constraint(equalTo: col.widthAnchor)
+        ])
+
+        // Нижний лист
         modalPresentationStyle = .pageSheet
         if #available(iOS 15.0, *) {
             if let sheet = sheetPresentationController {
                 if #available(iOS 16.0, *) {
                     sheet.detents = [
-                        .custom(resolver: { context in
-                            // Вычисляем нужную высоту на основе контента
-                            return 380
+                        .custom(resolver: { _ in
+                            return 470
                         })
                     ]
                 } else {
-                    sheet.detents = [.medium()]
+                    sheet.detents = [.medium(), .large()]
                 }
                 sheet.prefersGrabberVisible = true
+                sheet.preferredCornerRadius = DS.Radius.sheet
                 sheet.prefersScrollingExpandsWhenScrolledToEdge = false
             }
         }
     }
-    
-    private func loadAppIcon() {
-        if let icon = Self.loadAppIcon() {
-            appIconImageView.image = icon
-        }
-    }
-    
-    private func setupVersionLabels() {
-        let currentVersion = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "—"
-        currentVersionLabel.text = "v\(currentVersion)"
-        newVersionLabel.text = "v\(appStoreVersion)"
-    }
-    
+
     @objc private func updateTapped() {
         // Пытаемся открыть trackViewUrl (самый надежный способ)
         if let urlString = trackViewUrl, let url = URL(string: urlString) {
@@ -220,26 +104,4 @@ final class UpdateAvailableViewController: UIViewController {
     @objc private func laterTapped() {
         dismiss(animated: true)
     }
-    
-    private static func loadAppIcon() -> UIImage? {
-        // Try to fetch primary app icon from bundle
-        guard
-            let icons = Bundle.main.infoDictionary?["CFBundleIcons"] as? [String: Any],
-            let primary = icons["CFBundlePrimaryIcon"] as? [String: Any],
-            let files = primary["CFBundleIconFiles"] as? [String],
-            let last = files.last
-        else { return nil }
-        
-        return UIImage(named: last)
-    }
 }
-
-
-
-
-
-
-
-
-
-
