@@ -26,6 +26,22 @@ final class ScheduleBoardView: UIView {
         var days: [DaySchedule] = []
         /// Для .day — индекс дня недели (Пн = 0)
         var selectedDay = 0
+        /// Понедельник показанной недели (выбор даты из календаря); nil — текущая неделя
+        var weekStart: Date?
+        /// Шаблон чётности этой недели не загрузился
+        var weekUnavailable = false
+
+        /// Дата дня показанной недели
+        func weekDate(_ index: Int) -> Date {
+            guard let monday = weekStart else { return ScheduleTime.dateInCurrentWeek(index) }
+            return Calendar.current.date(byAdding: .day, value: index, to: monday) ?? monday
+        }
+
+        /// Показана ли текущая неделя
+        var isCurrentWeek: Bool {
+            guard let monday = weekStart else { return true }
+            return Calendar.current.isDate(monday, inSameDayAs: ScheduleDateResolver.monday(of: Date()))
+        }
         /// Для .session — выбранная дата yyyy-MM-dd
         var selectedISO: String?
         /// Можно ли открыть выбор группы из шапки
@@ -40,6 +56,10 @@ final class ScheduleBoardView: UIView {
     var onSelectDay: ((Int) -> Void)?
     var onSelectISO: ((String) -> Void)?
     var onOpenCalendar: (() -> Void)?
+    /// Быстрый выбор даты (долгое нажатие на кнопку календаря)
+    var onOpenDatePicker: (() -> Void)?
+    var onRetryWeek: (() -> Void)?
+    var onBackToToday: (() -> Void)?
     var onRetry: (() -> Void)?
     var onParity: ((Int) -> Void)?
 
@@ -182,26 +202,46 @@ final class ScheduleBoardView: UIView {
                 chip.onTap = { [weak self] in self?.onOpenWeek?() }
                 header.addArrangedSubview(chip)
             }
+            if input.phase == .content { header.addArrangedSubview(calendarButton("Календарь")) }
         case .session, .sessionList:
             if !input.days.isEmpty {
-                let button = GlassIconButton(symbol: "calendar")
-                button.accessibilityLabel = "Календарь сессии"
-                button.onTap = { [weak self] in self?.onOpenCalendar?() }
-                header.addArrangedSubview(button)
+                header.addArrangedSubview(calendarButton("Календарь сессии"))
             }
         case .week:
-            break
+            if input.phase == .content { header.addArrangedSubview(calendarButton("Календарь")) }
         }
+    }
+
+    /// Кнопка календаря в шапке: нажатие — месяц, долгое нажатие — быстрый выбор даты
+    private func calendarButton(_ label: String) -> UIView {
+        let button = GlassIconButton(symbol: "calendar")
+        button.accessibilityLabel = label
+        button.accessibilityHint = "Месяц с парами. Долгое нажатие — выбрать дату"
+        button.onTap = { [weak self] in self?.onOpenCalendar?() }
+        let longPress = UILongPressGestureRecognizer(target: self, action: #selector(calendarLongPress(_:)))
+        button.addGestureRecognizer(longPress)
+        button.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Выбрать дату", target: self, selector: #selector(openDatePickerAction))]
+        return button
+    }
+
+    @objc private func calendarLongPress(_ gesture: UILongPressGestureRecognizer) {
+        guard gesture.state == .began else { return }
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+        onOpenDatePicker?()
+    }
+
+    @objc private func openDatePickerAction() -> Bool {
+        onOpenDatePicker?()
+        return true
     }
 
     // MARK: «Сегодня» / день недели
 
     private func buildDay() {
-        let cal = ScheduleTime.calendar
-        let todayIndex = ScheduleTime.weekdayIndex(of: Date())
+        let todayIndex = input.isCurrentWeek ? ScheduleTime.weekdayIndex(of: Date()) : -1
         let index = min(max(input.selectedDay, 0), 6)
         let isToday = index == todayIndex
-        let date = ScheduleTime.dateInCurrentWeek(index)
+        let date = input.weekDate(index)
         let day = index < input.days.count ? input.days[index] : nil
         let lessons = day.map { ScheduleTime.realLessons($0) } ?? []
         let isLoading = input.phase == .loading
@@ -229,6 +269,12 @@ final class ScheduleBoardView: UIView {
         }
         add(UILabel.ds(sub, font: DS.Font.text(14), color: DS.Color.soft, lines: 0), spacingAfterPrevious: 4)
 
+        if !input.isCurrentWeek {
+            let back = DSButton("Вернуться к сегодня", style: .outlineAccent, height: 44, fontSize: 13.5, icon: DS.symbol("arrow.uturn.backward", size: 12, weight: .semibold))
+            back.onTap = { [weak self] in self?.onBackToToday?() }
+            add(back.leftAligned(), spacingAfterPrevious: 12)
+        }
+
         if input.isTeacher && !lessons.isEmpty {
             add(teacherStats(lessons), spacingAfterPrevious: 16)
         }
@@ -236,7 +282,7 @@ final class ScheduleBoardView: UIView {
             add(OfflineBanner(onRetry: { [weak self] in self?.onRetry?() }), spacingAfterPrevious: 16)
         }
 
-        let strip = DayStripView(days: input.days, selected: index, today: todayIndex)
+        let strip = DayStripView(days: input.days, selected: index, today: todayIndex, monday: input.weekDate(0))
         strip.onSelect = { [weak self] i in self?.onSelectDay?(i) }
         add(strip, spacingAfterPrevious: 16)
 
@@ -247,6 +293,11 @@ final class ScheduleBoardView: UIView {
             add(line.leftAligned(), spacingAfterPrevious: 26)
             for _ in 0..<3 { add(SkeletonView.block(height: 92, radius: 16), spacingAfterPrevious: 8) }
             add(UILabel.ds("Загружаем расписание ИМСИТ…", font: DS.Font.text(12.5), color: DS.Color.faint, alignment: .center), spacingAfterPrevious: 16)
+            return
+        }
+
+        if input.weekUnavailable {
+            add(weekUnavailableCard(), spacingAfterPrevious: 16)
             return
         }
 
@@ -307,6 +358,22 @@ final class ScheduleBoardView: UIView {
         if isToday, let teaser = tomorrowTeaser(after: index) {
             add(teaser, spacingAfterPrevious: 18)
         }
+    }
+
+    /// Неделя другой чётности не загрузилась (нет сети и кеша)
+    private func weekUnavailableCard() -> UIView {
+        let card = CardView(radius: DS.Radius.hero, shadow: .sm)
+        let icon = IconBadge(symbol: "icloud.slash", size: 32, pointSize: 15, tint: DS.Color.amberFg, fill: UIColor(rgb: 0xF59E0B, alpha: 0.14))
+        let title = UILabel.ds("Не удалось загрузить неделю \(input.parity ?? 1)", font: DS.Font.text(14, .semibold), lines: 0)
+        let text = UILabel.ds("Для этой даты нужно расписание другой недели. Проверьте подключение.", font: DS.Font.text(13), color: DS.Color.soft, lines: 0, lineHeight: 19)
+        let texts = UIStackView.ds(.vertical, spacing: 2, views: [title, text])
+        let top = UIStackView.ds(.horizontal, spacing: 12, alignment: .top, views: [icon, texts])
+        let retry = DSButton("Повторить", style: .outlineAccent, height: 44, fontSize: 13.5)
+        retry.onTap = { [weak self] in self?.onRetryWeek?() }
+        let col = UIStackView.ds(.vertical, spacing: 14, views: [top, retry])
+        card.addSubview(col)
+        col.pinEdges(to: card, insets: UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14))
+        return card
     }
 
     private func teacherStats(_ lessons: [Lesson]) -> UIView {
@@ -379,7 +446,7 @@ final class ScheduleBoardView: UIView {
     private func tomorrowTeaser(after index: Int) -> UIView? {
         guard index + 1 < input.days.count, index + 1 < 7 else { return nil }
         guard let lesson = ScheduleTime.realLessons(input.days[index + 1]).first else { return nil }
-        let date = ScheduleTime.dateInCurrentWeek(index + 1)
+        let date = input.weekDate(index + 1)
         let card = CardView(radius: DS.Radius.card, shadow: .none)
         card.fill = .clear
         card.dashed = true
@@ -907,14 +974,14 @@ final class ParityChip: DSTapControl {
 final class DayStripView: CardView {
     var onSelect: ((Int) -> Void)?
 
-    init(days: [DaySchedule], selected: Int, today: Int) {
+    init(days: [DaySchedule], selected: Int, today: Int, monday: Date = ScheduleTime.dateInCurrentWeek(0)) {
         super.init(radius: 20, shadow: .sm)
         let row = UIStackView.ds(.horizontal, spacing: 2)
         row.distribution = .fillEqually
         addSubview(row)
         row.pinEdges(to: self, insets: UIEdgeInsets(top: 4, left: 4, bottom: 4, right: 4))
         for i in 0..<7 {
-            let date = ScheduleTime.dateInCurrentWeek(i)
+            let date = Calendar.current.date(byAdding: .day, value: i, to: monday) ?? monday
             let hasLessons = i < days.count && !ScheduleTime.realLessons(days[i]).isEmpty
             let item = DayStripItem(weekday: ScheduleTime.shortDays[i], number: ScheduleTime.dayNumber(date), selected: i == selected, isToday: i == today, isSunday: i == 6, hasLessons: hasLessons)
             item.accessibilityLabel = ScheduleTime.fullDays[i] + ", " + ScheduleTime.dayMonth(date)
