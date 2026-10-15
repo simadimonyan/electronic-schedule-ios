@@ -34,8 +34,9 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
     private let scrollView = UIScrollView()
     private let stack = UIStackView()
     private let bottomBar = UIStackView()
-    private let submitButton = UIButton(type: .system)
-    private let laterButton = UIButton(type: .system)
+    private let submitButton = DSButton("Отправить", height: 50, fontSize: 15)
+    private let laterButton = DSButton("Не сейчас", style: .secondary, height: 50, fontSize: 14.5)
+    private let header = UIView()
     private let activity = UIActivityIndicatorView(style: .medium)
     private var bottomBarBottom: NSLayoutConstraint!
 
@@ -52,17 +53,9 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = DS.Color.bg
         title = "Пара вопросов о приложении"
-        navigationItem.largeTitleDisplayMode = .never
-        let appearance = UINavigationBarAppearance()
-        appearance.configureWithOpaqueBackground()
-        appearance.backgroundColor = .systemGroupedBackground
-        appearance.shadowColor = .clear
-        appearance.titleTextAttributes = [.font: UIFont.systemFont(ofSize: 17, weight: .semibold), .foregroundColor: UIColor.label]
-        navigationItem.standardAppearance = appearance
-        navigationItem.scrollEdgeAppearance = appearance
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(closeTapped))
+        navigationController?.setNavigationBarHidden(true, animated: false)
 
         setupLayout()
 
@@ -79,28 +72,64 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
     deinit { NotificationCenter.default.removeObserver(self) }
 
     private func setupLayout() {
+        // Шапка листа: надзаголовок и круглая кнопка «Закрыть»
+        header.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(header)
+        let eyebrow = EyebrowPill("Опрос", size: 10)
+        let close = DSTapControl()
+        close.backgroundColor = DS.Color.sunk
+        close.layer.cornerRadius = 20
+        close.fixSize(width: 40, height: 40)
+        let xmark = UIImageView(image: DS.symbol("xmark", size: 14, weight: .bold))
+        xmark.tintColor = DS.Color.fg
+        xmark.contentMode = .center
+        close.addSubview(xmark)
+        xmark.pinEdges(to: close)
+        close.accessibilityLabel = "Закрыть"
+        close.onTap = { [weak self] in self?.closeTapped() }
+        header.addSubview(eyebrow)
+        header.addSubview(close)
+        NSLayoutConstraint.activate([
+            header.topAnchor.constraint(equalTo: view.topAnchor, constant: 18),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -14),
+            header.heightAnchor.constraint(equalToConstant: 40),
+            eyebrow.leadingAnchor.constraint(equalTo: header.leadingAnchor),
+            eyebrow.centerYAnchor.constraint(equalTo: header.centerYAnchor),
+            close.trailingAnchor.constraint(equalTo: header.trailingAnchor),
+            close.centerYAnchor.constraint(equalTo: header.centerYAnchor)
+        ])
+
         scrollView.translatesAutoresizingMaskIntoConstraints = false
         scrollView.alwaysBounceVertical = true
         scrollView.keyboardDismissMode = .interactive
         view.addSubview(scrollView)
 
         stack.axis = .vertical
-        stack.spacing = 16
+        stack.spacing = 22
         stack.translatesAutoresizingMaskIntoConstraints = false
         scrollView.addSubview(stack)
 
-        // Нижняя панель: «Отправить» + «Не сейчас»
-        bottomBar.axis = .vertical
-        bottomBar.spacing = 4
+        // Нижняя панель: «Не сейчас» + «Отправить»
+        bottomBar.axis = .horizontal
+        bottomBar.spacing = 8
         bottomBar.translatesAutoresizingMaskIntoConstraints = false
         bottomBar.isLayoutMarginsRelativeArrangement = true
-        bottomBar.layoutMargins = UIEdgeInsets(top: 12, left: 16, bottom: 8, right: 16)
-        bottomBar.backgroundColor = .systemGroupedBackground
+        bottomBar.layoutMargins = UIEdgeInsets(top: 10, left: 22, bottom: 10, right: 22)
+        bottomBar.backgroundColor = DS.Color.bg
+        let barLine = UIView()
+        barLine.backgroundColor = DS.Color.border
+        barLine.translatesAutoresizingMaskIntoConstraints = false
+        bottomBar.addSubview(barLine)
+        NSLayoutConstraint.activate([
+            barLine.topAnchor.constraint(equalTo: bottomBar.topAnchor),
+            barLine.leadingAnchor.constraint(equalTo: bottomBar.leadingAnchor),
+            barLine.trailingAnchor.constraint(equalTo: bottomBar.trailingAnchor),
+            barLine.heightAnchor.constraint(equalToConstant: 1)
+        ])
         view.addSubview(bottomBar)
 
-        styleSubmitButton()
-        submitButton.addTarget(self, action: #selector(submitTapped), for: .touchUpInside)
-        submitButton.heightAnchor.constraint(equalToConstant: 50).isActive = true
+        submitButton.onTap = { [weak self] in self?.submitTapped() }
         activity.color = .white
         activity.hidesWhenStopped = true
         activity.translatesAutoresizingMaskIntoConstraints = false
@@ -110,25 +139,23 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
             activity.centerYAnchor.constraint(equalTo: submitButton.centerYAnchor)
         ])
 
-        laterButton.setTitle("Не сейчас", for: .normal)
-        laterButton.titleLabel?.font = .systemFont(ofSize: 16, weight: .medium)
-        laterButton.setTitleColor(.secondaryLabel, for: .normal)
-        laterButton.heightAnchor.constraint(equalToConstant: 40).isActive = true
-        laterButton.addTarget(self, action: #selector(laterTapped), for: .touchUpInside)
+        laterButton.onTap = { [weak self] in self?.laterTapped() }
+        laterButton.setContentHuggingPriority(.required, for: .horizontal)
+        laterButton.widthAnchor.constraint(greaterThanOrEqualToConstant: 128).isActive = true
 
-        bottomBar.addArrangedSubview(submitButton)
         bottomBar.addArrangedSubview(laterButton)
+        bottomBar.addArrangedSubview(submitButton)
 
         bottomBarBottom = bottomBar.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
+            scrollView.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 4),
             scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
             scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
             scrollView.bottomAnchor.constraint(equalTo: bottomBar.topAnchor),
 
-            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 8),
-            stack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 16),
-            stack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -16),
+            stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 12),
+            stack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: 22),
+            stack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -22),
             stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -16),
 
             bottomBar.leadingAnchor.constraint(equalTo: view.leadingAnchor),
@@ -138,12 +165,7 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
     }
 
     private func styleSubmitButton(title: String = "Отправить") {
-        submitButton.setTitle(title, for: .normal)
-        submitButton.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-        submitButton.layer.cornerRadius = 12
-        submitButton.tintColor = .white
-        submitButton.setTitleColor(.white, for: .normal)
-        submitButton.setTitleColor(UIColor.white.withAlphaComponent(0.8), for: .disabled)
+        submitButton.title = title
     }
 
     // MARK: Состояния
@@ -165,12 +187,12 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
             laterButton.isHidden = true
 
         case .empty:
-            stack.addArrangedSubview(messageBlock(icon: "tray", title: "Сейчас опросов нет", text: "Спасибо, что заглянули! Когда появится новый опрос, мы предложим его здесь.", accessory: nil))
-            setSubmit(title: "Закрыть", enabled: true)
+            stack.addArrangedSubview(messageBlock(icon: "IlloAllDone", title: "Сейчас опросов нет", text: "Спасибо, что заглянули! Когда появится новый опрос, мы предложим его здесь.", accessory: nil))
+            setSubmit(title: "Понятно", enabled: true)
             laterButton.isHidden = true
 
         case .failed(let message):
-            stack.addArrangedSubview(messageBlock(icon: "wifi.exclamationmark", title: "Не удалось загрузить опрос", text: message, accessory: nil))
+            stack.addArrangedSubview(messageBlock(icon: "IlloUnavailable", title: "Не удалось загрузить опрос", text: message, accessory: nil))
             setSubmit(title: "Повторить", enabled: true)
 
         case .form(let quiz):
@@ -186,7 +208,7 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
 
         case .done(let message):
             finished = true
-            stack.addArrangedSubview(messageBlock(icon: "checkmark.circle.fill", title: message, text: nil, accessory: nil))
+            stack.addArrangedSubview(messageBlock(icon: "IlloSuccess", title: message, text: nil, accessory: nil))
             setSubmit(title: "Готово", enabled: true)
             laterButton.isHidden = true
             if #available(iOS 15.0, *), let sheet = navigationController?.sheetPresentationController {
@@ -200,7 +222,6 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
     private func setSubmit(title: String, enabled: Bool) {
         styleSubmitButton(title: title)
         submitButton.isEnabled = enabled
-        submitButton.backgroundColor = enabled ? .systemBlue : .systemGray3
     }
 
     private func loadCurrentQuiz() {
@@ -224,17 +245,13 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         header.axis = .vertical
         header.spacing = 6
         let name = UILabel()
-        name.text = quiz.name
-        name.font = .systemFont(ofSize: 22, weight: .bold)
-        name.textColor = .label
         name.numberOfLines = 0
+        name.setDS(quiz.name, font: DS.Font.display(25, .heavy), kern: -0.6, lineHeight: 29)
         header.addArrangedSubview(name)
         if let description = quiz.description?.trimmingCharacters(in: .whitespacesAndNewlines), !description.isEmpty {
             let label = UILabel()
-            label.text = description
-            label.font = .systemFont(ofSize: 15)
-            label.textColor = .secondaryLabel
             label.numberOfLines = 0
+            label.setDS(description, font: DS.Font.text(13.5), color: DS.Color.soft, lineHeight: 20)
             header.addArrangedSubview(label)
         }
         if quiz.supportedQuestions.contains(where: { $0.isRequired }) {
@@ -251,48 +268,42 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
     }
 
     private func requiredHint() -> NSAttributedString {
-        let text = NSMutableAttributedString(string: "* ", attributes: [.foregroundColor: UIColor.systemRed, .font: UIFont.systemFont(ofSize: 13, weight: .semibold)])
-        text.append(NSAttributedString(string: "— обязательный вопрос", attributes: [.foregroundColor: UIColor.secondaryLabel, .font: UIFont.systemFont(ofSize: 13)]))
+        let text = NSMutableAttributedString(string: "* ", attributes: [.foregroundColor: DS.Color.redFg, .font: DS.Font.text(12.5, .semibold)])
+        text.append(NSAttributedString(string: "— обязательный вопрос", attributes: [.foregroundColor: DS.Color.faint, .font: DS.Font.text(12.5)]))
         return text
     }
 
     /// Карточка вопроса в стиле карточек настроек
     private func card(for question: QuizQuestion) -> UIView {
         let card = UIView()
-        card.backgroundColor = .secondarySystemGroupedBackground
-        card.layer.cornerRadius = 12
-        card.layer.shadowColor = UIColor.black.cgColor
-        card.layer.shadowOpacity = 0.08
-        card.layer.shadowOffset = CGSize(width: 0, height: 2)
-        card.layer.shadowRadius = 4
 
         let content = UIStackView()
         content.axis = .vertical
-        content.spacing = 10
+        content.spacing = 8
         content.translatesAutoresizingMaskIntoConstraints = false
         card.addSubview(content)
         NSLayoutConstraint.activate([
-            content.topAnchor.constraint(equalTo: card.topAnchor, constant: 16),
-            content.leadingAnchor.constraint(equalTo: card.leadingAnchor, constant: 16),
-            content.trailingAnchor.constraint(equalTo: card.trailingAnchor, constant: -16),
-            content.bottomAnchor.constraint(equalTo: card.bottomAnchor, constant: -16)
+            content.topAnchor.constraint(equalTo: card.topAnchor),
+            content.leadingAnchor.constraint(equalTo: card.leadingAnchor),
+            content.trailingAnchor.constraint(equalTo: card.trailingAnchor),
+            content.bottomAnchor.constraint(equalTo: card.bottomAnchor)
         ])
 
         let title = UILabel()
         title.numberOfLines = 0
-        let titleText = NSMutableAttributedString(string: question.label, attributes: [.font: UIFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: UIColor.label])
+        let titleText = NSMutableAttributedString(string: question.label, attributes: [.font: DS.Font.text(14.5, .semibold), .foregroundColor: DS.Color.fg])
         if question.isRequired {
-            titleText.append(NSAttributedString(string: " *", attributes: [.font: UIFont.systemFont(ofSize: 16, weight: .semibold), .foregroundColor: UIColor.systemRed]))
+            titleText.append(NSAttributedString(string: " *", attributes: [.font: DS.Font.text(14.5, .semibold), .foregroundColor: DS.Color.redFg]))
+        } else {
+            titleText.append(NSAttributedString(string: " · необязательно", attributes: [.font: DS.Font.text(12.5), .foregroundColor: DS.Color.faint]))
         }
         title.attributedText = titleText
         content.addArrangedSubview(title)
 
         if let description = question.description?.trimmingCharacters(in: .whitespacesAndNewlines), !description.isEmpty {
             let label = UILabel()
-            label.text = description
-            label.font = .systemFont(ofSize: 14)
-            label.textColor = .secondaryLabel
             label.numberOfLines = 0
+            label.setDS(description, font: DS.Font.text(13), color: DS.Color.soft, lineHeight: 19)
             content.addArrangedSubview(label)
         }
 
@@ -316,9 +327,10 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         for value in 1...question.ratingScale {
             let button = SurveyActionButton(type: .system)
             button.setTitle("\(value)", for: .normal)
-            button.titleLabel?.font = .systemFont(ofSize: 18, weight: .bold)
-            button.layer.cornerRadius = 12
-            button.heightAnchor.constraint(equalToConstant: 48).isActive = true
+            button.titleLabel?.font = DS.Font.display(21, .heavy)
+            button.layer.cornerRadius = 16
+            button.layer.borderWidth = 1
+            button.heightAnchor.constraint(equalToConstant: 58).isActive = true
             button.accessibilityLabel = "Оценка \(value) из \(question.ratingScale)"
             button.onTap = { [weak self] in
                 self?.ratingAnswers[question.id] = value
@@ -333,14 +345,38 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
             let selected = self?.ratingAnswers[question.id]
             for (index, button) in buttons.enumerated() {
                 let isOn = selected == index + 1
-                button.backgroundColor = isOn ? .systemBlue : .tertiarySystemFill
-                button.setTitleColor(isOn ? .white : .label, for: .normal)
+                button.backgroundColor = isOn ? DS.Color.brand : DS.Color.surface
+                button.layer.borderColor = isOn ? UIColor.clear.cgColor : DS.Color.borderStrong.resolvedColor(with: button.traitCollection).cgColor
+                button.setTitleColor(isOn ? .white : DS.Color.fg, for: .normal)
+                button.layer.shadowColor = DS.Color.brand.cgColor
+                button.layer.shadowOpacity = isOn ? 0.3 : 0
+                button.layer.shadowRadius = 9
+                button.layer.shadowOffset = CGSize(width: 0, height: 6)
                 button.accessibilityTraits = isOn ? [.button, .selected] : .button
             }
         }
         refreshers[question.id] = refresh
         refresh()
-        return row
+        guard question.ratingScale == 5 else { return row }
+        // Подписи шкалы: «Плохо … Отлично»
+        let words = ["Плохо", "Так себе", "Нормально", "Хорошо", "Отлично"]
+        let low = UILabel.ds("Плохо", font: DS.Font.text(12), color: DS.Color.faint)
+        let high = UILabel.ds("Отлично", font: DS.Font.text(12), color: DS.Color.faint)
+        let word = UILabel.ds("", font: DS.Font.text(12, .semibold), color: DS.Color.accent, alignment: .center)
+        let legend = UIStackView.ds(.horizontal, spacing: 4, alignment: .center, views: [low, word, high])
+        legend.distribution = .equalCentering
+        let previous = refreshers[question.id]
+        refreshers[question.id] = { [weak self] in
+            previous?()
+            let value = self?.ratingAnswers[question.id]
+            word.setDS(value.map { words[$0 - 1] } ?? "", font: DS.Font.text(12, .semibold), color: DS.Color.accent, alignment: .center)
+        }
+        let wrap = UIStackView.ds(.vertical, spacing: 8, views: [row])
+        let legendWrap = UIView()
+        legendWrap.addSubview(legend)
+        legend.pinEdges(to: legendWrap, insets: UIEdgeInsets(top: 0, left: 4, bottom: 0, right: 4))
+        wrap.addArrangedSubview(legendWrap)
+        return wrap
     }
 
     // SINGLE / MULTIPLE: список вариантов
@@ -352,11 +388,11 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         for option in question.options {
             let button = SurveyActionButton(type: .system)
             button.contentHorizontalAlignment = .leading
-            button.titleLabel?.font = .systemFont(ofSize: 16)
+            button.titleLabel?.font = DS.Font.text(14.5, .medium)
             button.titleLabel?.numberOfLines = 0
             button.setTitle(option.label, for: .normal)
-            button.setTitleColor(.label, for: .normal)
-            button.layer.cornerRadius = 10
+            button.setTitleColor(DS.Color.fg, for: .normal)
+            button.layer.cornerRadius = 12
             button.contentEdgeInsets = UIEdgeInsets(top: 12, left: 12, bottom: 12, right: 12)
             button.titleEdgeInsets = UIEdgeInsets(top: 0, left: 10, bottom: 0, right: -10)
             button.heightAnchor.constraint(greaterThanOrEqualToConstant: 46).isActive = true
@@ -386,10 +422,10 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
                 if multiple { symbol = isOn ? "checkmark.square.fill" : "square" }
                 else { symbol = isOn ? "largecircle.fill.circle" : "circle" }
                 button.setImage(UIImage(systemName: symbol), for: .normal)
-                button.tintColor = isOn ? .systemBlue : .tertiaryLabel
-                button.backgroundColor = isOn ? UIColor.systemBlue.withAlphaComponent(0.12) : .tertiarySystemFill
-                button.layer.borderWidth = isOn ? 1.5 : 0
-                button.layer.borderColor = UIColor.systemBlue.cgColor
+                button.tintColor = isOn ? DS.Color.accent : DS.Color.faint
+                button.backgroundColor = isOn ? DS.Color.accentSoft : DS.Color.surface
+                button.layer.borderWidth = isOn ? 1.5 : 1
+                button.layer.borderColor = (isOn ? DS.Color.accentBorder : DS.Color.borderStrong).resolvedColor(with: button.traitCollection).cgColor
                 button.accessibilityTraits = isOn ? [.button, .selected] : .button
             }
         }
@@ -398,8 +434,8 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         if multiple {
             let hint = UILabel()
             hint.text = "Можно выбрать несколько"
-            hint.font = .systemFont(ofSize: 13)
-            hint.textColor = .secondaryLabel
+            hint.font = DS.Font.text(12)
+            hint.textColor = DS.Color.faint
             list.addArrangedSubview(hint)
         }
         return list
@@ -413,33 +449,36 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
 
         let textView = SurveyTextView()
         textView.questionId = question.id
-        textView.font = .systemFont(ofSize: 16)
-        textView.textColor = .label
-        textView.backgroundColor = .tertiarySystemFill
-        textView.layer.cornerRadius = 10
-        textView.textContainerInset = UIEdgeInsets(top: 12, left: 8, bottom: 12, right: 8)
+        textView.font = DS.Font.text(14)
+        textView.textColor = DS.Color.fg
+        textView.tintColor = DS.Color.accent
+        textView.backgroundColor = DS.Color.surface
+        textView.layer.cornerRadius = 12
+        textView.layer.borderWidth = 1.5
+        textView.layer.borderColor = DS.Color.borderStrong.resolvedColor(with: traitCollection).cgColor
+        textView.textContainerInset = UIEdgeInsets(top: 10, left: 9, bottom: 10, right: 9)
         textView.isScrollEnabled = false
         textView.delegate = self
         textView.text = textAnswers[question.id]
-        textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 96).isActive = true
+        textView.heightAnchor.constraint(greaterThanOrEqualToConstant: 78).isActive = true
 
         let placeholder = UILabel()
         placeholder.text = question.isRequired ? "Напишите пару слов" : "Необязательно — пару слов, если хочется"
-        placeholder.font = .systemFont(ofSize: 16)
-        placeholder.textColor = .placeholderText
+        placeholder.font = DS.Font.text(14)
+        placeholder.textColor = DS.Color.faint
         placeholder.numberOfLines = 0
         placeholder.translatesAutoresizingMaskIntoConstraints = false
         textView.addSubview(placeholder)
         NSLayoutConstraint.activate([
-            placeholder.topAnchor.constraint(equalTo: textView.topAnchor, constant: 12),
-            placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 13),
+            placeholder.topAnchor.constraint(equalTo: textView.topAnchor, constant: 10),
+            placeholder.leadingAnchor.constraint(equalTo: textView.leadingAnchor, constant: 14),
             placeholder.widthAnchor.constraint(equalTo: textView.widthAnchor, constant: -26)
         ])
         textView.placeholderLabel = placeholder
 
         let counter = UILabel()
-        counter.font = .monospacedDigitSystemFont(ofSize: 12, weight: .regular)
-        counter.textColor = .tertiaryLabel
+        counter.font = DS.Font.mono(10.5)
+        counter.textColor = DS.Color.faint
         counter.textAlignment = .right
         textView.counterLabel = counter
         textView.limit = textLimit
@@ -614,30 +653,21 @@ final class SurveySheetViewController: UIViewController, UIAdaptivePresentationC
         let box = UIStackView()
         box.axis = .vertical
         box.alignment = .center
-        box.spacing = 12
+        box.spacing = 8
         box.isLayoutMarginsRelativeArrangement = true
-        box.layoutMargins = UIEdgeInsets(top: 32, left: 8, bottom: 16, right: 8)
+        box.layoutMargins = UIEdgeInsets(top: 0, left: 8, bottom: 16, right: 8)
         if let accessory = accessory { box.addArrangedSubview(accessory) }
         if let icon = icon {
-            let image = UIImageView(image: UIImage(systemName: icon, withConfiguration: UIImage.SymbolConfiguration(pointSize: 44, weight: .regular)))
-            image.tintColor = icon.hasPrefix("checkmark") ? .systemGreen : .systemBlue
+            // Иллюстрация состояния из Assets
+            let image = UIImageView(image: UIImage(named: icon))
+            image.contentMode = .scaleAspectFit
+            image.fixSize(width: 140, height: 140)
             box.addArrangedSubview(image)
         }
-        let titleLabel = UILabel()
-        titleLabel.text = title
-        titleLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        titleLabel.textColor = .label
-        titleLabel.textAlignment = .center
-        titleLabel.numberOfLines = 0
+        let titleLabel = UILabel.display(title, size: 22, alignment: .center)
         box.addArrangedSubview(titleLabel)
         if let text = text {
-            let label = UILabel()
-            label.text = text
-            label.font = .systemFont(ofSize: 15)
-            label.textColor = .secondaryLabel
-            label.textAlignment = .center
-            label.numberOfLines = 0
-            box.addArrangedSubview(label)
+            box.addArrangedSubview(UILabel.ds(text, font: DS.Font.text(14), color: DS.Color.soft, lines: 0, lineHeight: 21, alignment: .center))
         }
         return box
     }
@@ -694,7 +724,7 @@ private final class SurveyTextView: UITextView {
         placeholderLabel?.isHidden = !(text ?? "").isEmpty
         let count = (text ?? "").count
         counterLabel?.text = "\(count) / \(limit)"
-        counterLabel?.textColor = count >= limit ? .systemRed : .tertiaryLabel
+        counterLabel?.textColor = count >= limit ? DS.Color.redFg : DS.Color.faint
     }
 }
 
