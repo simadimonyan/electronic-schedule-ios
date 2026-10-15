@@ -10,60 +10,62 @@ import UIKit
 private final class CorrespondenceCalendarDayCell: UICollectionViewCell {
     static let reuseId = "day"
 
+    private let circle = UIView()
     private let numberLabel = UILabel()
     private let dotView = UIView()
 
     override init(frame: CGRect) {
         super.init(frame: frame)
+        circle.translatesAutoresizingMaskIntoConstraints = false
+        circle.layer.cornerRadius = 20
+        contentView.addSubview(circle)
         numberLabel.translatesAutoresizingMaskIntoConstraints = false
         numberLabel.textAlignment = .center
-        numberLabel.font = .systemFont(ofSize: 17, weight: .semibold)
         dotView.translatesAutoresizingMaskIntoConstraints = false
-        dotView.layer.cornerRadius = 3
-        dotView.clipsToBounds = true
-        dotView.isHidden = true
-        contentView.addSubview(numberLabel)
-        contentView.addSubview(dotView)
+        dotView.layer.cornerRadius = 2
+        circle.addSubview(numberLabel)
+        circle.addSubview(dotView)
         NSLayoutConstraint.activate([
-            numberLabel.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            numberLabel.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 6),
-            dotView.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
-            dotView.topAnchor.constraint(equalTo: numberLabel.bottomAnchor, constant: 4),
-            dotView.widthAnchor.constraint(equalToConstant: 6),
-            dotView.heightAnchor.constraint(equalToConstant: 6)
+            circle.centerXAnchor.constraint(equalTo: contentView.centerXAnchor),
+            circle.centerYAnchor.constraint(equalTo: contentView.centerYAnchor),
+            circle.widthAnchor.constraint(equalToConstant: 40),
+            circle.heightAnchor.constraint(equalToConstant: 40),
+            numberLabel.centerXAnchor.constraint(equalTo: circle.centerXAnchor),
+            numberLabel.centerYAnchor.constraint(equalTo: circle.centerYAnchor, constant: -2),
+            dotView.centerXAnchor.constraint(equalTo: circle.centerXAnchor),
+            dotView.topAnchor.constraint(equalTo: numberLabel.bottomAnchor, constant: 1),
+            dotView.widthAnchor.constraint(equalToConstant: 4),
+            dotView.heightAnchor.constraint(equalToConstant: 4)
         ])
     }
 
     required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
     func apply(day: Int, isCurrentMonth: Bool, isSunday: Bool, hasLessons: Bool, isSelected: Bool, isSelectable: Bool, isToday: Bool) {
-        numberLabel.text = day > 0 ? "\(day)" : ""
-        if day <= 0 {
-            numberLabel.textColor = .clear
-            dotView.isHidden = true
-            contentView.backgroundColor = .clear
-            return
-        }
-        if isCurrentMonth {
-            if isSunday {
-                numberLabel.textColor = .systemRed
-            } else {
-                numberLabel.textColor = .label
-            }
-        } else {
-            numberLabel.textColor = UIColor.tertiaryLabel
-        }
-        // Точка только на реальной текущей дате телефона
-        dotView.isHidden = !isToday
-        dotView.backgroundColor = UIColor.systemGreen
+        circle.isHidden = day <= 0
+        guard day > 0 else { return }
+        let fg: UIColor
+        circle.layer.borderWidth = 0
         if isSelected {
-            contentView.backgroundColor = UIColor.systemBlue.withAlphaComponent(0.18)
-            contentView.layer.cornerRadius = 10
+            circle.backgroundColor = DS.Color.brand
+            fg = .white
+        } else if isToday {
+            circle.backgroundColor = hasLessons ? DS.Color.accentSoft : .clear
+            circle.layer.borderWidth = 1.5
+            circle.layer.borderColor = DS.Color.accent.resolvedColor(with: traitCollection).cgColor
+            fg = DS.Color.accent
+        } else if hasLessons {
+            circle.backgroundColor = DS.Color.accentSoft
+            fg = DS.Color.fg
         } else {
-            contentView.backgroundColor = .clear
-            contentView.layer.cornerRadius = 0
+            circle.backgroundColor = .clear
+            fg = DS.Color.faint
         }
+        numberLabel.setDS("\(day)", font: DS.Font.text(14.5, hasLessons ? .bold : .medium), color: fg, alignment: .center)
+        dotView.backgroundColor = isSelected ? .white : (hasLessons ? DS.Color.accent : .clear)
         contentView.alpha = isSelectable || isCurrentMonth ? 1 : 0.45
+        accessibilityLabel = "\(day)" + (hasLessons ? ", день сессии" : "")
+        accessibilityTraits = isSelected ? [.button, .selected] : .button
     }
 }
 
@@ -86,11 +88,11 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
         return f
     }()
 
-    /// Календарь сетки: воскресенье — первый столбец (как на макете).
+    /// Календарь сетки: понедельник — первый столбец (как на макете).
     private var gridCalendar: Calendar = {
         var c = Calendar(identifier: .gregorian)
         c.locale = Locale(identifier: "en_US_POSIX")
-        c.firstWeekday = 1
+        c.firstWeekday = 2
         return c
     }()
 
@@ -102,11 +104,24 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
     private var weekdayRow = UIStackView()
     private var collectionView: UICollectionView!
 
+    /// Нижний лист в стиле макета Session (variant calendar)
+    func presentAsSheet(from presenter: UIViewController) {
+        modalPresentationStyle = .pageSheet
+        if #available(iOS 15.0, *), let sheet = sheetPresentationController {
+            if #available(iOS 16.0, *) {
+                sheet.detents = [.custom(resolver: { _ in 470 }), .large()]
+            } else {
+                sheet.detents = [.medium(), .large()]
+            }
+            sheet.prefersGrabberVisible = true
+            sheet.preferredCornerRadius = DS.Radius.sheet
+        }
+        presenter.present(self, animated: true)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemBackground
-        title = "Календарь"
-        navigationItem.rightBarButtonItem = UIBarButtonItem(barButtonSystemItem: .close, target: self, action: #selector(closeTapped))
+        view.backgroundColor = DS.Color.bg
 
         buildAvailableMonths()
         if let s = selectedISO, let d = Self.isoFmt.date(from: s) {
@@ -118,38 +133,34 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
         }
 
         monthTitleLabel.translatesAutoresizingMaskIntoConstraints = false
-        monthTitleLabel.font = .systemFont(ofSize: 20, weight: .bold)
-        monthTitleLabel.textAlignment = .center
 
-        prevButton.translatesAutoresizingMaskIntoConstraints = false
-        nextButton.translatesAutoresizingMaskIntoConstraints = false
-        let prevCfg = UIImage.SymbolConfiguration(pointSize: 18, weight: .semibold)
-        prevButton.setImage(UIImage(systemName: "chevron.left", withConfiguration: prevCfg), for: .normal)
-        nextButton.setImage(UIImage(systemName: "chevron.right", withConfiguration: prevCfg), for: .normal)
-        prevButton.tintColor = .systemBlue
-        nextButton.tintColor = .systemBlue
+        for (button, symbol, label) in [(prevButton, "chevron.left", "Предыдущий месяц"), (nextButton, "chevron.right", "Следующий месяц")] {
+            button.translatesAutoresizingMaskIntoConstraints = false
+            button.setImage(DS.symbol(symbol, size: 14, weight: .bold), for: .normal)
+            button.tintColor = DS.Color.fg
+            button.backgroundColor = DS.Color.sunk
+            button.layer.cornerRadius = 18
+            button.accessibilityLabel = label
+            button.widthAnchor.constraint(equalToConstant: 36).isActive = true
+            button.heightAnchor.constraint(equalToConstant: 36).isActive = true
+        }
         prevButton.addTarget(self, action: #selector(prevMonth), for: .touchUpInside)
         nextButton.addTarget(self, action: #selector(nextMonth), for: .touchUpInside)
 
-        let header = UIStackView(arrangedSubviews: [prevButton, monthTitleLabel, nextButton])
+        let header = UIStackView(arrangedSubviews: [monthTitleLabel, prevButton, nextButton])
         header.axis = .horizontal
         header.alignment = .center
         header.spacing = 8
         header.translatesAutoresizingMaskIntoConstraints = false
-        prevButton.setContentHuggingPriority(.required, for: .horizontal)
-        nextButton.setContentHuggingPriority(.required, for: .horizontal)
+        monthTitleLabel.setContentHuggingPriority(.defaultLow, for: .horizontal)
 
         weekdayRow = UIStackView()
         weekdayRow.axis = .horizontal
         weekdayRow.distribution = .fillEqually
         weekdayRow.translatesAutoresizingMaskIntoConstraints = false
-        let headers = ["Вс", "Пн", "Вт", "Ср", "Чт", "Пт", "Сб"]
-        for t in headers {
+        for t in ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Вс"] {
             let lab = UILabel()
-            lab.text = t
-            lab.font = .systemFont(ofSize: 12, weight: .bold)
-            lab.textColor = .secondaryLabel
-            lab.textAlignment = .center
+            lab.setDS(t, font: DS.Font.text(11, .bold), color: DS.Color.faint, kern: 0.55, alignment: .center)
             weekdayRow.addArrangedSubview(lab)
         }
 
@@ -158,30 +169,50 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
         layout.minimumLineSpacing = 0
         collectionView = UICollectionView(frame: .zero, collectionViewLayout: layout)
         collectionView.translatesAutoresizingMaskIntoConstraints = false
-        collectionView.backgroundColor = .systemBackground
+        collectionView.backgroundColor = .clear
         collectionView.dataSource = self
         collectionView.delegate = self
+        collectionView.isScrollEnabled = false
         collectionView.register(CorrespondenceCalendarDayCell.self, forCellWithReuseIdentifier: CorrespondenceCalendarDayCell.reuseId)
+
+        // Легенда: день сессии / сегодня
+        let sessionDot = UIView()
+        sessionDot.backgroundColor = DS.Color.accent
+        sessionDot.layer.cornerRadius = 4
+        sessionDot.fixSize(width: 8, height: 8)
+        let todayDot = UIView()
+        todayDot.layer.cornerRadius = 4
+        todayDot.layer.borderWidth = 1.5
+        todayDot.layer.borderColor = DS.Color.accent.resolvedColor(with: traitCollection).cgColor
+        todayDot.fixSize(width: 8, height: 8)
+        let legend = UIStackView.ds(.horizontal, spacing: 14, alignment: .center, views: [
+            UIStackView.ds(.horizontal, spacing: 6, alignment: .center, views: [sessionDot, UILabel.ds("День сессии", font: DS.Font.text(12), color: DS.Color.soft)]),
+            UIStackView.ds(.horizontal, spacing: 6, alignment: .center, views: [todayDot, UILabel.ds("Сегодня", font: DS.Font.text(12), color: DS.Color.soft)]),
+            UIView()
+        ])
 
         view.addSubview(header)
         view.addSubview(weekdayRow)
         view.addSubview(collectionView)
+        view.addSubview(legend)
 
         NSLayoutConstraint.activate([
-            header.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 8),
-            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            prevButton.widthAnchor.constraint(equalToConstant: 44),
-            nextButton.widthAnchor.constraint(equalToConstant: 44),
+            header.topAnchor.constraint(equalTo: view.topAnchor, constant: 26),
+            header.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 22),
+            header.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -22),
 
-            weekdayRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 16),
-            weekdayRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            weekdayRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
+            weekdayRow.topAnchor.constraint(equalTo: header.bottomAnchor, constant: 14),
+            weekdayRow.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            weekdayRow.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
 
-            collectionView.topAnchor.constraint(equalTo: weekdayRow.bottomAnchor, constant: 8),
-            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 8),
-            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -8),
-            collectionView.bottomAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -12)
+            collectionView.topAnchor.constraint(equalTo: weekdayRow.bottomAnchor, constant: 6),
+            collectionView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
+            collectionView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
+            collectionView.heightAnchor.constraint(equalToConstant: 44 * 6),
+
+            legend.topAnchor.constraint(equalTo: collectionView.bottomAnchor, constant: 8),
+            legend.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
+            legend.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20)
         ])
 
         rebuildMonthGrid()
@@ -214,7 +245,7 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
         let fmt = DateFormatter()
         fmt.locale = Locale(identifier: "ru_RU")
         fmt.dateFormat = "LLLL yyyy"
-        monthTitleLabel.text = fmt.string(from: displayedMonth).capitalized
+        monthTitleLabel.setDS(fmt.string(from: displayedMonth).capitalized, font: DS.Font.display(20, .heavy), kern: -0.5)
 
         let cal = gridCalendar
         var comps = cal.dateComponents([.year, .month], from: displayedMonth)
@@ -329,6 +360,6 @@ final class CorrespondenceDatePickerViewController: UIViewController, UICollecti
 
     func collectionView(_ collectionView: UICollectionView, layout collectionViewLayout: UICollectionViewLayout, sizeForItemAt indexPath: IndexPath) -> CGSize {
         let w = floor((collectionView.bounds.width) / 7)
-        return CGSize(width: w, height: 58)
+        return CGSize(width: w, height: 44)
     }
 }
