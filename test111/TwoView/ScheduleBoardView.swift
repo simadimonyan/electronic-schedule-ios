@@ -276,7 +276,7 @@ final class ScheduleBoardView: UIView {
         }
 
         if input.isTeacher && !lessons.isEmpty {
-            add(teacherStats(lessons), spacingAfterPrevious: 16)
+            add(teacherStats(lessons, isToday: isToday), spacingAfterPrevious: 16)
         }
         if input.offline {
             add(OfflineBanner(onRetry: { [weak self] in self?.onRetry?() }), spacingAfterPrevious: 16)
@@ -376,13 +376,13 @@ final class ScheduleBoardView: UIView {
         return card
     }
 
-    private func teacherStats(_ lessons: [Lesson]) -> UIView {
+    private func teacherStats(_ lessons: [Lesson], isToday: Bool) -> UIView {
         let groups = Set(lessons.map { ScheduleTime.who(for: $0, isTeacher: true).who }.filter { !$0.isEmpty }).count
         var rooms: [String: Int] = [:]
         lessons.forEach { if !$0.room.isEmpty { rooms[$0.room, default: 0] += 1 } }
         let topRoom = rooms.max { $0.value < $1.value }?.key ?? "—"
         let items: [(String, String)] = [
-            (String(lessons.count), dsPlural(lessons.count, "пара", "пары", "пар") + " сегодня"),
+            (String(lessons.count), dsPlural(lessons.count, "пара", "пары", "пар") + (isToday ? " сегодня" : " за день")),
             (String(groups), dsPlural(groups, "группа", "группы", "групп")),
             (topRoom, "чаще всего")
         ]

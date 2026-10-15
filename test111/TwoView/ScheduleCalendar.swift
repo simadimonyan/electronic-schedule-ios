@@ -268,6 +268,8 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
     private let prevButton = DSTapControl()
     private let nextButton = DSTapControl()
     private var collectionView: UICollectionView!
+    private var gridHeight: NSLayoutConstraint!
+    private var legendRing: UIView?
     private let todayButton = DSButton("", style: .secondary, height: 48, fontSize: 15)
 
     init(resolver: ScheduleDateResolver, selectedDate: Date) {
@@ -289,7 +291,7 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
         modalPresentationStyle = .pageSheet
         if #available(iOS 15.0, *), let sheet = sheetPresentationController {
             if #available(iOS 16.0, *) {
-                sheet.detents = [.custom(resolver: { _ in 560 }), .large()]
+                sheet.detents = [.custom(resolver: { _ in 500 }), .large()]
             } else {
                 sheet.detents = [.large()]
             }
@@ -402,8 +404,9 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
             stack.topAnchor.constraint(equalTo: view.topAnchor, constant: 20),
             stack.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 18),
             stack.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -18),
-            collectionView.heightAnchor.constraint(equalToConstant: 48 * 6)
         ])
+        gridHeight = collectionView.heightAnchor.constraint(equalToConstant: 48 * 6)
+        gridHeight.isActive = true
 
         rebuildMonthGrid()
     }
@@ -416,7 +419,7 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
             if let color = color { dot.backgroundColor = color }
             if ring {
                 dot.layer.borderWidth = 1.5
-                dot.layer.borderColor = DS.Color.accent.resolvedColor(with: traitCollection).cgColor
+                legendRing = dot
             }
             return UIStackView.ds(.horizontal, spacing: 6, alignment: .center, views: [dot, UILabel.ds(text, font: DS.Font.text(12), color: DS.Color.soft)])
         }
@@ -438,6 +441,14 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         collectionView.collectionViewLayout.invalidateLayout()
+        // Цвет обводки слоя не динамический — пересчитываем под тему
+        legendRing?.layer.borderColor = DS.Color.accent.resolvedColor(with: traitCollection).cgColor
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        view.setNeedsLayout()
+        collectionView?.reloadData()
     }
 
     @objc private func swiped(_ gesture: UISwipeGestureRecognizer) {
@@ -489,7 +500,8 @@ final class ScheduleCalendarViewController: UIViewController, UICollectionViewDa
         for day in 0..<daysInMonth {
             dayItems.append(cal.date(byAdding: .day, value: day, to: displayedMonth))
         }
-        while dayItems.count < 42 { dayItems.append(nil) }
+        while dayItems.count % 7 != 0 { dayItems.append(nil) }
+        gridHeight.constant = CGFloat(48 * (dayItems.count / 7))
 
         // Для очного: если в месяце есть недели незагруженной чётности — просим догрузить
         var missing = Set<Int>()
