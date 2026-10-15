@@ -66,6 +66,7 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
         secondVC.onOpenDay = { [weak self] in self?.show(.today) }
         teacherSecondVC.onSelectGroup = { [weak self] in self?.show(.select) }
         teacherSecondVC.onOpenWeek = { [weak self] in self?.show(.week) }
+        teacherSecondVC.onOpenDay = { [weak self] in self?.show(.today) }
         settingsVC.onOpenSelection = { [weak self] in self?.show(.select) }
         firstVC.onBack = { [weak self] in self?.closeSelection() }
         teacherFirstVC.onBack = { [weak self] in self?.closeSelection() }
