@@ -35,7 +35,7 @@ struct ScheduleWidgetExtension: Widget {
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: ScheduleProvider()) { entry in
             ScheduleWidgetEntryView(entry: entry)
-                .containerBackground(.fill.tertiary, for: .widget)
+                .containerBackground(for: .widget) { WidgetBackgroundView() }
         }
         .configurationDisplayName("Следующая пара")
         .description("Показывает следующую пару из вашего расписания")
@@ -506,694 +506,277 @@ struct ScheduleWidgetEntryView: View {
 
     var body: some View {
         switch family {
-        case .systemSmall:
-            SmallWidgetView(entry: entry)
         case .systemMedium:
-            MediumWidgetView(entry: entry)
+            TimelineWidgetView(entry: entry, isMedium: true)
         default:
-            SmallWidgetView(entry: entry)
+            TimelineWidgetView(entry: entry, isMedium: false)
         }
     }
 }
 
-struct SmallWidgetView: View {
-    var entry: ScheduleProvider.Entry
-    
+// MARK: - Новый дизайн (Widget.dc.html): таймлайн «сейчас → следующая»
+
+/// Палитра виджета: светлая и тёмная (look light / dark)
+private struct WidgetPalette {
+    let fg: Color
+    let soft: Color
+    let track: Color
+    let accent: Color
+    let nodeBg: Color
+    let mute: Color
+    let rail: [Color]
+
+    static func of(_ scheme: ColorScheme) -> WidgetPalette {
+        if scheme == .dark {
+            return WidgetPalette(fg: Color(hex6: 0xF1F5F9), soft: Color(hex6: 0xA3AEC2), track: Color(hex6: 0x94A3B8).opacity(0.22),
+                                 accent: Color(hex6: 0x60A5FA), nodeBg: Color(hex6: 0x1B2540), mute: Color(hex6: 0x475569),
+                                 rail: [Color(hex6: 0x3B82F6), Color(hex6: 0x38BDF8)])
+        }
+        return WidgetPalette(fg: Color(hex6: 0x0F172A), soft: Color(hex6: 0x64748B), track: Color(hex6: 0xE2E8F0),
+                             accent: Color(hex6: 0x1A4FDB), nodeBg: .white, mute: Color(hex6: 0xCBD5E1),
+                             rail: [Color(hex6: 0x1A4FDB), Color(hex6: 0x0EA5E9)])
+    }
+}
+
+private extension Color {
+    init(hex6: UInt32) {
+        self.init(red: Double((hex6 >> 16) & 0xFF) / 255, green: Double((hex6 >> 8) & 0xFF) / 255, blue: Double(hex6 & 0xFF) / 255)
+    }
+}
+
+struct WidgetBackgroundView: View {
+    @Environment(\.colorScheme) var scheme
+
     var body: some View {
-            if entry.isWeekend {
-                // Выходной день
-            ZStack(alignment: .topLeading) {
-                // Вертикальная полоска
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.top, -18)
-                    .padding(.bottom, -18)
-                
-                // Контент
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer()
-                    
-                    HStack(alignment: .top, spacing: 0) {
-                        // Белый неоновый кружочек на полоске
-                    ZStack {
-                        Circle()
-                                .fill(Color.white)
-                                .frame(width: 10, height: 10)
-                                .shadow(color: Color.white.opacity(0.8), radius: 3, x: 0, y: 0)
-                                .shadow(color: Color.blue.opacity(0.6), radius: 4, x: 0, y: 0)
-                            
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 7, height: 7)
-                        }
-                        .offset(x: -3, y: 8)
-                        
-                        VStack(alignment: .leading, spacing: 3) {
-                    Text("Выходной")
-                                .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                            Text("Отдыхай, сегодня можно выспаться")
-                                .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                                .lineLimit(2)
-                        }
-                        .padding(.leading, 8)
-                        .padding(.trailing, 8)
-                        .padding(.vertical, 6)
-                    }
-                    
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            }
-        } else if entry.currentLesson == nil && entry.nextLesson == nil {
-            // Нет расписания
-            VStack(spacing: 8) {
-                Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.system(size: 20))
-                    .foregroundColor(.secondary)
-                
-                Text("Нет\nрасписания")
-                        .font(.caption2)
-                        .foregroundColor(.secondary)
-                        .multilineTextAlignment(.center)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .padding()
+        if scheme == .dark {
+            LinearGradient(colors: [Color(hex6: 0x1B2540), Color(hex6: 0x121A2E)], startPoint: .top, endPoint: .bottom)
         } else {
-            let isOnlyNextLesson = entry.currentLesson == nil && entry.nextLesson != nil
-            
-            ZStack(alignment: .topLeading) {
-                // Вертикальная полоска
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.top, -18)
-                    .padding(.bottom, -18)
-                
-                // Контент
-                if isOnlyNextLesson {
-                    // Когда только следующая пара - центрируем вертикально
-                    VStack(alignment: .leading, spacing: 0) {
-                        Spacer()
-                        
-                        if entry.isTomorrowWeekend {
-                            // Показываем сообщение, что завтра выходной
-                            HStack(alignment: .top, spacing: 0) {
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 10, height: 10)
-                                        .shadow(color: Color.white.opacity(0.8), radius: 3, x: 0, y: 0)
-                                        .shadow(color: Color.blue.opacity(0.6), radius: 4, x: 0, y: 0)
-                                    
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 7, height: 7)
-                                }
-                                .offset(x: -3, y: 8)
-                                
-                                VStack(alignment: .leading, spacing: 3) {
-                                    Text("Завтра пар нет")
-                                        .font(.system(size: 13, weight: .semibold))
-                        .foregroundColor(.primary)
-                                    
-                                    Text("Отдыхаем")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.leading, 8)
-                                .padding(.trailing, 8)
-                                .padding(.vertical, 6)
-                            }
-                        } else if let next = entry.nextLesson {
-                            SmallLessonCardView(
-                                lesson: next,
-                                title: "Следующая пара",
-                                progress: nil,
-                                showTitle: true,
-                                isNextLesson: true,
-                                dayName: entry.isNextLessonInAnotherDay ? entry.nextLessonDayName : nil
-                            )
-                        }
-                        
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                } else {
-                    VStack(alignment: .leading, spacing: 3) {
-                        // Текущая пара (если есть)
-                        if let current = entry.currentLesson, let progress = entry.currentLessonProgress {
-                            SmallLessonCardView(
-                                lesson: current,
-                                title: "Сейчас идет",
-                                progress: progress,
-                                showTitle: true,
-                                isNextLesson: false,
-                                dayName: nil
-                            )
-                            .padding(.top, -4)
-                        }
-                        
-                        // Следующая пара или сообщение
-                        if entry.currentLesson != nil && entry.isNextLessonInAnotherDay {
-                            // Показываем сообщение, что пары закончились
-                            HStack(alignment: .top, spacing: 0) {
-                            ZStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 10, height: 10)
-                                        .shadow(color: Color.white.opacity(0.8), radius: 3, x: 0, y: 0)
-                                        .shadow(color: Color.blue.opacity(0.6), radius: 4, x: 0, y: 0)
-                                    
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 7, height: 7)
-                                }
-                                .offset(x: -3, y: 6)
-                                
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Пары закончились")
-                                        .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.primary)
-                                    
-                                    Text("Домой 🏠")
-                                        .font(.system(size: 9))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.leading, 8)
-                                .padding(.trailing, 8)
-                                .padding(.vertical, 5)
-                            }
-                            .padding(.top, -3)
-                        } else if let next = entry.nextLesson {
-                            SmallLessonCardView(
-                                lesson: next,
-                                title: "Следующая пара",
-                                progress: nil,
-                                showTitle: true,
-                                isNextLesson: true,
-                                dayName: entry.isNextLessonInAnotherDay ? entry.nextLessonDayName : nil
-                            )
-                            .padding(.top, entry.currentLesson == nil ? 0 : -3)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    // Если есть текущая пара, поднимаем блок выше, если только следующая — оставляем отступ
-                    .padding(.top, entry.currentLesson == nil ? 6 : -2)
-                }
-            }
+            Color.white
         }
     }
 }
 
-// Компактная карточка пары для small виджета
-struct SmallLessonCardView: View {
-    let lesson: Lesson
-    let title: String
+/// Один блок таймлайна
+private struct TimelineBlock {
+    enum Node { case live, next, past }
+    let label: String
+    let subject: String
+    let who: String
+    let time: String
+    let room: String
+    let meta: String?
+    let node: Node
     let progress: Double?
-    let showTitle: Bool
-    let isNextLesson: Bool
-    let dayName: String? // Название дня для следующей пары в другой день
-    
+}
+
+struct TimelineWidgetView: View {
+    let entry: ScheduleEntry
+    let isMedium: Bool
+    @Environment(\.colorScheme) var scheme
+
+    private var palette: WidgetPalette { WidgetPalette.of(scheme) }
+
     var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Белый неоновый кружочек на голубой полоске
-                                ZStack {
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 10, height: 10)
-                    .shadow(color: Color.white.opacity(0.8), radius: 3, x: 0, y: 0)
-                    .shadow(color: Color.blue.opacity(0.6), radius: 4, x: 0, y: 0)
-                
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: 7, height: 7)
-            }
-            .offset(
-                x: -3,
-                y: {
-                    // Для следующей пары кружок опускаем еще ниже,
-                    // для текущей пары тоже чуть ниже, чем было
-                    if isNextLesson {
-                        return showTitle ? 19 : 20
-                    } else {
-                        return showTitle ? 19 : 20
+        let blocks = makeBlocks()
+        ZStack(alignment: .topLeading) {
+            // Рельс таймлайна
+            LinearGradient(colors: palette.rail, startPoint: .top, endPoint: .bottom)
+                .frame(width: 3)
+                .frame(maxHeight: .infinity)
+                .padding(.leading, isMedium ? 1 : 0)
+                .padding(.vertical, -40)
+
+            if blocks.isEmpty {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("НЕТ РАСПИСАНИЯ")
+                        .font(.system(size: 10, weight: .bold))
+                        .kerning(0.8)
+                        .foregroundColor(palette.soft)
+                    Text("Откройте приложение и выберите группу")
+                        .font(.system(size: isMedium ? 15 : 13, weight: .heavy))
+                        .foregroundColor(palette.fg)
+                        .lineLimit(3)
+                }
+                .padding(.leading, isMedium ? 19 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            } else {
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(blocks.enumerated()), id: \.offset) { index, block in
+                        if index > 0 { Spacer(minLength: 4) }
+                        blockView(block, full: index == 0)
                     }
-                }()
-            )
-            
+                }
+                .padding(.leading, isMedium ? 19 : 16)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            }
+        }
+        .padding(.leading, isMedium ? 1 : 0)
+    }
+
+    // MARK: Блок
+
+    @ViewBuilder
+    private func blockView(_ block: TimelineBlock, full: Bool) -> some View {
+        HStack(alignment: .top, spacing: 0) {
             VStack(alignment: .leading, spacing: 2) {
-                // Название предмета и заголовок
-                if showTitle {
-                    // Для текущей и следующей пары одинаковый стиль:
-                    // заголовок наверху справа, ниже — название пары
-                    VStack(alignment: .leading, spacing: 2) {
-                        HStack {
-                            Spacer()
-                            HStack(spacing: 3) {
-                                Text(title)
-                                    .font(.system(size: 8))
-                                    .foregroundColor(.secondary)
-                                
-                                if let dayName = dayName {
-                                    Text(dayName)
-                                        .font(.system(size: 8))
-                                        .foregroundColor(.blue)
-                                }
-                            }
-                        }
-                        
-                        Text(lesson.subject)
-                            .font(.system(size: 12, weight: .semibold))
-                            .foregroundColor(.primary)
-                            .lineLimit(2)
-                            .truncationMode(.tail)
-                    }
-                    .frame(height: 26, alignment: .topLeading)
-                } else {
-                    Text(lesson.subject)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundColor(.primary)
-                        .lineLimit(2)
-                        .truncationMode(.tail)
-                        .frame(height: 28)
-                }
-                
-                // Преподаватель
-                if !lesson.teacher.isEmpty {
-                    HStack(spacing: 2) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: 7))
-                            .foregroundColor(.blue)
-                        
-                        Text(lesson.teacher)
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
+                if isMedium {
+                    HStack(alignment: .firstTextBaseline, spacing: 10) {
+                        Text(block.subject)
+                            .font(.system(size: 15.5, weight: .heavy))
+                            .foregroundColor(palette.fg)
                             .lineLimit(1)
-                            .truncationMode(.tail)
+                        Spacer(minLength: 0)
+                        Text(block.label)
+                            .font(.system(size: 11, weight: .semibold))
+                            .foregroundColor(block.node == .live ? palette.accent : palette.soft)
+                            .lineLimit(1)
+                            .layoutPriority(1)
                     }
-                    .frame(height: 10)
-                }
-                
-                // Время и кабинет
-                HStack(spacing: 6) {
-                    HStack(spacing: 2) {
-                        Image(systemName: "clock")
-                            .font(.system(size: 7))
-                            .foregroundColor(.blue)
-                        
-                        Text(lesson.time)
-                            .font(.system(size: 9))
-                            .foregroundColor(.secondary)
-                    }
-                    
-                    if !lesson.room.isEmpty {
-                        HStack(spacing: 2) {
-                            Image(systemName: "mappin.circle")
-                                .font(.system(size: 7))
-                                .foregroundColor(.blue)
-                            
-                            Text(lesson.room)
-                                .font(.system(size: 9))
-                        .foregroundColor(.secondary)
-                }
-                    }
-                }
-                .frame(height: 10)
-                
-                // Индикатор прогресса (только для текущей пары)
-                if let progress = progress {
-                    VStack(alignment: .leading, spacing: 1) {
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(Color.blue.opacity(0.2))
-                                    .frame(height: 3)
-                                
-                                RoundedRectangle(cornerRadius: 1.5)
-                                    .fill(Color.blue)
-                                    .frame(width: geometry.size.width * CGFloat(progress), height: 3)
-                            }
-                        }
-                        .frame(height: 3)
-                        
-                        Text("\(Int(progress * 100))%")
-                            .font(.system(size: 8))
-                            .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 1)
-                }
-            }
-            .padding(.leading, 8)
-            .padding(.trailing, 8)
-            .padding(.vertical, 5)
-        }
-    }
-}
-
-struct MediumWidgetView: View {
-    var entry: ScheduleProvider.Entry
-    
-    var body: some View {
-            if entry.isWeekend {
-                // Выходной день
-            ZStack(alignment: .topLeading) {
-                // Вертикальная полоска
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.top, -20)
-                    .padding(.bottom, -20)
-                
-                // Контент
-                VStack(alignment: .leading, spacing: 0) {
-                    Spacer()
-                    
-                    HStack(alignment: .top, spacing: 0) {
-                        // Белый неоновый кружочек на полоске
-                    ZStack {
-                        Circle()
-                                .fill(Color.white)
-                                .frame(width: 14, height: 14)
-                                .shadow(color: Color.white.opacity(0.8), radius: 4, x: 0, y: 0)
-                                .shadow(color: Color.blue.opacity(0.6), radius: 6, x: 0, y: 0)
-                            
-                            Circle()
-                                .fill(Color.white)
-                                .frame(width: 10, height: 10)
-                        }
-                        .offset(x: -5, y: 12)
-                        
-                        VStack(alignment: .leading, spacing: 5) {
-                    Text("Выходной")
-                                .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                    
-                            Text("Отдыхай, сегодня можно выспаться")
-                                .font(.system(size: 12))
-                            .foregroundColor(.secondary)
-                                .lineLimit(2)
-                        }
-                        .padding(.leading, 10)
-                        .padding(.trailing, 10)
-                        .padding(.vertical, 10)
-                    }
-                    
-                    Spacer()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            }
-        } else if entry.currentLesson == nil && entry.nextLesson == nil {
-            // Нет расписания
-            VStack(spacing: 12) {
-                Image(systemName: "calendar.badge.exclamationmark")
-                    .font(.system(size: 28))
-                        .foregroundColor(.secondary)
-                
-                Text("Нет расписания")
-                            .font(.headline)
-                            .foregroundColor(.secondary)
-                    }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            let isOnlyNextLesson = entry.currentLesson == nil && entry.nextLesson != nil
-            
-            ZStack(alignment: .topLeading) {
-                // Единая вертикальная полоска (растянута за края сверху и снизу)
-                Rectangle()
-                    .fill(Color.blue)
-                    .frame(width: 4)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.top, -20)
-                    .padding(.bottom, -20)
-                
-                // Заголовок "Следующая пара" в верхнем правом углу (только для одной пары)
-                if isOnlyNextLesson && !entry.isTomorrowWeekend {
-                    HStack {
-                        Spacer()
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("Следующая пара")
-                                .font(.system(size: 12))
-                                .foregroundColor(.secondary)
-                            
-                            if entry.isNextLessonInAnotherDay, let dayName = entry.nextLessonDayName {
-                                Text(dayName)
-                                    .font(.system(size: 10))
-                                    .foregroundColor(.blue)
-                            }
-                        }
-                        .padding(.top, 6)
-                        .padding(.trailing, 10)
-                    }
-                }
-                
-                // Контент с парами
-                if isOnlyNextLesson {
-                    // Когда только следующая пара - центрируем вертикально, но слева
-                    VStack(alignment: .leading, spacing: 0) {
-                        Spacer()
-                        
-                        if entry.isTomorrowWeekend {
-                            // Показываем сообщение, что завтра выходной
-                            HStack(alignment: .top, spacing: 0) {
-                                // Белый неоновый кружочек на голубой полоске
-                                ZStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 14, height: 14)
-                                        .shadow(color: Color.white.opacity(0.8), radius: 4, x: 0, y: 0)
-                                        .shadow(color: Color.blue.opacity(0.6), radius: 6, x: 0, y: 0)
-                                    
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 10, height: 10)
-                                }
-                                .offset(x: -5, y: 12)
-                                
-                                VStack(alignment: .leading, spacing: 5) {
-                                    Text("Завтра пар нет")
-                                        .font(.system(size: 16, weight: .semibold))
-                        .foregroundColor(.primary)
-                                    
-                                    Text("Отдыхаем")
-                                        .font(.system(size: 12))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.leading, 10)
-                                .padding(.trailing, 10)
-                        .padding(.vertical, 10)
-                            }
-                        } else if let next = entry.nextLesson {
-                            LessonCardView(
-                                lesson: next,
-                                title: "Следующая пара",
-                                progress: nil,
-                                showLine: false,
-                                isLarge: true,
-                                showTitle: false,
-                                isNextLesson: false
-                            )
-                        }
-                        
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-                    .padding(.leading, 0)
-                } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        // Текущая пара (если есть)
-                        if let current = entry.currentLesson, let progress = entry.currentLessonProgress {
-                            LessonCardView(
-                                lesson: current,
-                                title: "Сейчас идет",
-                                progress: progress,
-                                showLine: false,
-                                isLarge: false,
-                                showTitle: true,
-                                isNextLesson: false
-                            )
+                    if let meta = block.meta {
+                        Text(meta)
+                            .font(.system(size: 12))
+                            .foregroundColor(palette.soft)
+                            .lineLimit(1)
                             .padding(.top, 2)
+                    } else if full {
+                        if !block.who.isEmpty {
+                            iconLine("person", block.who)
+                                .padding(.top, 2)
                         }
-                        
-                        // Следующая пара (если есть)
-                        if entry.currentLesson != nil && entry.isNextLessonInAnotherDay {
-                            // Всегда показываем сообщение, что пары закончились, даже если завтра выходной
-                            HStack(alignment: .top, spacing: 0) {
-                                // Белый неоновый кружочек на голубой полоске
-                                    ZStack {
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 12, height: 12)
-                                        .shadow(color: Color.white.opacity(0.8), radius: 4, x: 0, y: 0)
-                                        .shadow(color: Color.blue.opacity(0.6), radius: 6, x: 0, y: 0)
-                                    
-                                    Circle()
-                                        .fill(Color.white)
-                                        .frame(width: 8, height: 8)
-                                }
-                                .offset(x: -4, y: 10)
-                                
-                                VStack(alignment: .leading, spacing: 4) {
-                                    Text("Пары закончились")
-                                        .font(.system(size: 14, weight: .semibold))
-                                        .foregroundColor(.primary)
-                                    
-                                    Text("Можно идти домой 🏠")
-                                        .font(.system(size: 11))
-                                        .foregroundColor(.secondary)
-                                }
-                                .padding(.leading, 10)
-                                .padding(.trailing, 10)
-                                .padding(.vertical, 8)
+                        HStack(spacing: 6) {
+                            Image(systemName: "clock").font(.system(size: 10, weight: .semibold)).foregroundColor(palette.accent)
+                            Text(block.time).font(.system(size: 12, design: .monospaced)).foregroundColor(palette.soft)
+                            if !block.room.isEmpty {
+                                Image(systemName: "door.left.hand.open").font(.system(size: 10, weight: .semibold)).foregroundColor(palette.accent).padding(.leading, 6)
+                                Text(block.room).font(.system(size: 12, weight: .bold, design: .monospaced)).foregroundColor(palette.fg)
                             }
-                            .padding(.top, -6)
-                        } else if let next = entry.nextLesson {
-                            LessonCardView(
-                                lesson: next,
-                                title: "Следующая пара",
-                                progress: nil,
-                                showLine: false,
-                                isLarge: false,
-                                showTitle: true,
-                                isNextLesson: true
-                            )
-                            .padding(.top, -6)
                         }
-                    }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                    .padding(.leading, 0)
-                }
-            }
-        }
-    }
-}
-
-// Компонент карточки пары
-struct LessonCardView: View {
-    let lesson: Lesson
-    let title: String
-    let progress: Double?
-    let showLine: Bool
-    let isLarge: Bool
-    let showTitle: Bool
-    let isNextLesson: Bool
-    
-    var body: some View {
-        HStack(alignment: .top, spacing: 0) {
-            // Белый неоновый кружочек на голубой полоске
-                                ZStack {
-                // Неоновое свечение
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: isLarge ? 14 : 12, height: isLarge ? 14 : 12)
-                    .shadow(color: Color.white.opacity(0.8), radius: 4, x: 0, y: 0)
-                    .shadow(color: Color.blue.opacity(0.6), radius: 6, x: 0, y: 0)
-                
-                // Внутренний белый круг
-                Circle()
-                    .fill(Color.white)
-                    .frame(width: isLarge ? 10 : 8, height: isLarge ? 10 : 8)
-            }
-            .offset(x: isLarge ? -5 : -4, y: isLarge ? 12 : (isNextLesson ? 10 : 10)) // Кружочки на уровне названий
-            
-            VStack(alignment: .leading, spacing: isLarge ? 5 : 4) {
-                // Название предмета и заголовок на одной линии (заголовок показываем только если showTitle = true)
-                HStack(alignment: .center, spacing: 4) {
-                    Text(lesson.subject)
-                        .font(.system(size: isLarge ? 16 : 14, weight: .semibold))
-                                    .foregroundColor(.primary)
                         .lineLimit(1)
-                        .truncationMode(.tail)
-                        .layoutPriority(1)
-                    
-                    if showTitle {
-                        Spacer(minLength: 4)
-                        
-                        Text(title)
-                            .font(.system(size: isLarge ? 12 : 11))
-                            .foregroundColor(.secondary)
-                            .fixedSize()
-                    }
-                }
-                .frame(height: isLarge ? 19 : 17)
-                
-                // Преподаватель
-                if !lesson.teacher.isEmpty {
-                    HStack(spacing: 3) {
-                        Image(systemName: "person.fill")
-                            .font(.system(size: isLarge ? 11 : 10))
-                            .foregroundColor(.blue)
-                        
-                        Text(lesson.teacher)
-                            .font(.system(size: isLarge ? 12 : 11))
-                            .foregroundColor(.secondary)
+                        if let progress = block.progress { progressBar(progress).padding(.top, 5) }
+                    } else {
+                        Text([block.who, block.time, block.room].filter { !$0.isEmpty }.joined(separator: " · "))
+                            .font(.system(size: 12))
+                            .foregroundColor(palette.soft)
                             .lineLimit(1)
-                            .truncationMode(.tail)
+                            .padding(.top, 2)
                     }
-                    .frame(height: isLarge ? 16 : 14)
-                }
-                
-                // Время и кабинет с иконками
-                HStack(spacing: 8) {
-                    HStack(spacing: 3) {
-                        Image(systemName: "clock")
-                            .font(.system(size: isLarge ? 11 : 10))
-                            .foregroundColor(.blue)
-                        
-                        Text(lesson.time)
-                            .font(.system(size: isLarge ? 12 : 11))
-                            .foregroundColor(.secondary)
+                } else {
+                    Text(block.label.uppercased())
+                        .font(.system(size: 10, weight: .bold))
+                        .kerning(0.8)
+                        .foregroundColor(block.node == .live ? palette.accent : palette.soft)
+                        .lineLimit(1)
+                    Text(block.subject)
+                        .font(.system(size: 14, weight: .heavy))
+                        .foregroundColor(palette.fg)
+                        .lineLimit(full ? 2 : 1)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if let meta = block.meta {
+                        Text(meta)
+                            .font(.system(size: 11))
+                            .foregroundColor(palette.soft)
+                            .lineLimit(1)
+                    } else {
+                        (Text(block.room).font(.system(size: 10.5, weight: .bold, design: .monospaced)).foregroundColor(palette.fg)
+                         + Text(block.room.isEmpty ? block.time : " · " + block.time).font(.system(size: 10.5, design: .monospaced)).foregroundColor(palette.soft))
+                            .lineLimit(1)
                     }
-                    
-                    if !lesson.room.isEmpty {
-                        HStack(spacing: 3) {
-                            Image(systemName: "mappin.circle")
-                                .font(.system(size: isLarge ? 11 : 10))
-                                .foregroundColor(.blue)
-                            
-                            Text(lesson.room)
-                                .font(.system(size: isLarge ? 12 : 11))
-                        .foregroundColor(.secondary)
-                        }
-                    }
-                }
-                .frame(height: isLarge ? 16 : 14)
-                
-                // Индикатор прогресса (только для текущей пары)
-                if let progress = progress {
-                    VStack(alignment: .leading, spacing: 2) {
-                        GeometryReader { geometry in
-                            ZStack(alignment: .leading) {
-                                // Фон прогресс-бара
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.blue.opacity(0.2))
-                                    .frame(height: 4)
-                                
-                                // Заполненная часть
-                                RoundedRectangle(cornerRadius: 2)
-                                    .fill(Color.blue)
-                                    .frame(width: geometry.size.width * CGFloat(progress), height: 4)
-                            }
-                        }
-                        .frame(height: 4)
-                        
-                        Text("\(Int(progress * 100))%")
-                            .font(.system(size: 10))
-                        .foregroundColor(.secondary)
-                    }
-                    .padding(.top, 2)
+                    if full, let progress = block.progress { progressBar(progress).padding(.top, 3) }
                 }
             }
-            .padding(.leading, 10)
-            .padding(.trailing, 10)
-            .padding(.vertical, isLarge ? 10 : 8)
+        }
+        .overlay(alignment: .topLeading) {
+            nodeView(block.node)
+                .offset(x: isMedium ? -18.5 - nodeSize(block.node) / 2 : -14.5 - nodeSize(block.node) / 2,
+                        y: (isMedium ? 10 : 7) - nodeSize(block.node) / 2)
         }
     }
-}
 
+    private func iconLine(_ symbol: String, _ text: String) -> some View {
+        HStack(spacing: 6) {
+            Image(systemName: symbol).font(.system(size: 10, weight: .semibold)).foregroundColor(palette.accent)
+            Text(text).font(.system(size: 12)).foregroundColor(palette.soft).lineLimit(1)
+        }
+    }
+
+    private func progressBar(_ value: Double) -> some View {
+        HStack(spacing: 6) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(palette.track)
+                    Capsule().fill(LinearGradient(colors: palette.rail, startPoint: .leading, endPoint: .trailing))
+                        .frame(width: max(4, geo.size.width * CGFloat(min(max(value, 0), 1))))
+                }
+            }
+            .frame(height: 4)
+            Text("\(Int((value * 100).rounded()))%")
+                .font(.system(size: isMedium ? 10 : 9.5, design: .monospaced))
+                .foregroundColor(palette.soft)
+        }
+    }
+
+    private func nodeSize(_ node: TimelineBlock.Node) -> CGFloat {
+        switch node {
+        case .live: return 13
+        case .next: return 11
+        case .past: return 7
+        }
+    }
+
+    @ViewBuilder
+    private func nodeView(_ node: TimelineBlock.Node) -> some View {
+        switch node {
+        case .live:
+            Circle()
+                .fill(Color.white)
+                .overlay(Circle().stroke(palette.accent, lineWidth: 3))
+                .frame(width: 13, height: 13)
+                .shadow(color: palette.accent.opacity(0.6), radius: 5)
+        case .next:
+            Circle()
+                .fill(palette.nodeBg)
+                .overlay(Circle().stroke(palette.accent, lineWidth: 2.5))
+                .frame(width: 11, height: 11)
+        case .past:
+            Circle().fill(palette.mute).frame(width: 7, height: 7)
+        }
+    }
+
+    // MARK: Данные → блоки
+
+    private func time(_ lesson: Lesson) -> String {
+        lesson.time.replacingOccurrences(of: "-", with: "–")
+    }
+
+    private func block(_ lesson: Lesson, label: String, node: TimelineBlock.Node, progress: Double?) -> TimelineBlock {
+        TimelineBlock(label: label, subject: lesson.subject, who: lesson.teacher, time: time(lesson), room: lesson.room, meta: nil, node: node, progress: progress)
+    }
+
+    private func makeBlocks() -> [TimelineBlock] {
+        if entry.isWeekend {
+            var blocks = [TimelineBlock(label: "Сегодня", subject: "Выходной", who: "", time: "", room: "", meta: "Пар нет — отдыхайте", node: .past, progress: nil)]
+            if let next = entry.nextLesson {
+                blocks.append(block(next, label: entry.nextLessonDayName ?? "Следующая пара", node: .next, progress: nil))
+            }
+            return blocks
+        }
+        if entry.currentLesson == nil && entry.nextLesson == nil {
+            return []
+        }
+        var blocks: [TimelineBlock] = []
+        if let current = entry.currentLesson {
+            blocks.append(block(current, label: "Сейчас идёт", node: .live, progress: entry.currentLessonProgress))
+            if entry.isNextLessonInAnotherDay {
+                blocks.append(TimelineBlock(label: "Затем", subject: "Пары закончились", who: "", time: "", room: "", meta: "Можно домой", node: .past, progress: nil))
+            } else if let next = entry.nextLesson {
+                blocks.append(block(next, label: isMedium ? "Следующая пара" : "Следующая", node: .next, progress: nil))
+            }
+        } else if entry.isTomorrowWeekend {
+            blocks.append(TimelineBlock(label: "Завтра", subject: "Завтра пар нет", who: "", time: "", room: "", meta: "Отдыхаем", node: .past, progress: nil))
+        } else if let next = entry.nextLesson {
+            let label = entry.isNextLessonInAnotherDay ? (entry.nextLessonDayName ?? "Следующая пара") : (isMedium ? "Следующая пара" : "Следующая")
+            blocks.append(block(next, label: label, node: .next, progress: nil))
+        }
+        return blocks
+    }
+}

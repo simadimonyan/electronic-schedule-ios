@@ -21,22 +21,21 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
     var secondVC: TwoViewController!
     var teacherFirstVC: TeacherViewController!
     var teacherSecondVC: TeacherScheduleViewController!
-    
+    var settingsVC: SettingsViewController!
+
+    /// Что сейчас на экране: вкладки нижней панели или выбор группы/преподавателя
+    private enum Page: Equatable { case today, week, settings, select }
+
     private var isTeacherMode: Bool = false
     private var currentAnimationVC: ModeSwitchAnimationViewController?
+    private var page: Page = .today
+    private var isGroupSelectionRemoved = false
 
-    private var customTabBar: UIView!
-    private var tabBarContainer: UIView!
-    private var listButton: UIButton!
-    private var calendarButton: UIButton!
-    private var currentItemIndex: Int = 0
-    private var indicatorView: UIView!
-    private var indicatorLeadingConstraint: NSLayoutConstraint!
-    private var isFirstLayout: Bool = true
+    private let navBar = FloatingNavBar()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = DS.Color.bg
 
         // Инициализация контроллеров для режима студента
         firstVC = ViewController()
@@ -46,36 +45,44 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
         teacherFirstVC = TeacherViewController()
         teacherSecondVC = TeacherScheduleViewController()
 
+        settingsVC = SettingsViewController()
+
         // Установка делегатов
         firstVC.delegate = self
         teacherFirstVC.delegate = self
 
-        // Добавляем контроллеры режима студента как дочерние
-        addChild(firstVC)
-        view.addSubview(firstVC.view)
-        firstVC.didMove(toParent: self)
+        for child in [secondVC, teacherSecondVC, settingsVC, firstVC, teacherFirstVC] as [UIViewController] {
+            addChild(child)
+            view.addSubview(child.view)
+            child.view.frame = view.bounds
+            child.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+            child.didMove(toParent: self)
+            child.view.isHidden = true
+        }
 
-        addChild(secondVC)
-        view.addSubview(secondVC.view)
-        secondVC.didMove(toParent: self)
+        // Переходы со страниц расписания
+        secondVC.onSelectGroup = { [weak self] in self?.show(.select) }
+        secondVC.onOpenWeek = { [weak self] in self?.show(.week) }
+        secondVC.onOpenDay = { [weak self] in self?.show(.today) }
+        teacherSecondVC.onSelectGroup = { [weak self] in self?.show(.select) }
+        teacherSecondVC.onOpenWeek = { [weak self] in self?.show(.week) }
+        settingsVC.onOpenSelection = { [weak self] in self?.show(.select) }
+        firstVC.onBack = { [weak self] in self?.closeSelection() }
+        teacherFirstVC.onBack = { [weak self] in self?.closeSelection() }
 
-        secondVC.view.frame.origin.x = self.view.bounds.width // Начальная позиция второго контроллера (спрятан справа)
+        // Плавающая навигация
+        view.addSubview(navBar)
+        NSLayoutConstraint.activate([
+            navBar.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
+            navBar.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
+            navBar.bottomAnchor.constraint(equalTo: view.bottomAnchor, constant: -28)
+        ])
+        navBar.onSelect = { [weak self] item in self?.navTapped(item) }
+        navBar.onSearch = { [weak self] in
+            MRMyTracker.trackEvent(name: "Перейти на главный экран")
+            self?.show(.select)
+        }
 
-        // Добавляем контроллеры режима преподавателя как дочерние (изначально скрыты)
-        addChild(teacherFirstVC)
-        view.addSubview(teacherFirstVC.view)
-        teacherFirstVC.didMove(toParent: self)
-        teacherFirstVC.view.isHidden = true
-
-        addChild(teacherSecondVC)
-        view.addSubview(teacherSecondVC.view)
-        teacherSecondVC.didMove(toParent: self)
-        teacherSecondVC.view.isHidden = true
-        teacherSecondVC.view.frame.origin.x = self.view.bounds.width
-
-        // Настроим кастомный таббар
-        setupTabBar()
-        
         // Загружаем сохраненный режим
         loadSavedMode()
 
@@ -88,25 +95,33 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
             secondVC.selectedGroupURL = selectedGroupURL
             secondVC.loadTimetableData()
         }
-        
+
+        // Стартовая страница: расписание, если группа уже выбрана; «Неделя» — если включено «Показать всю неделю»
+        show(hasSavedSelection ? (UserDefaults.standard.bool(forKey: "showFullSchedule") ? .week : .today) : .select, animated: false)
+
         // Подписываемся на нотификацию об изменении режима
         NotificationCenter.default.addObserver(self, selector: #selector(handleModeChange), name: Notification.Name("modeChanged"), object: nil)
     }
-    
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        
+
         // Показываем окно с информацией о виджетах через 10 секунд после запуска
         showWidgetInfoIfNeeded()
 
         // Опрос обратной связи: проверка не чаще раза в сутки, с учётом «Не сейчас»
         SurveyManager.shared.scheduleScreenDidAppear(from: self)
     }
-    
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        navigationController?.setNavigationBarHidden(true, animated: animated)
+    }
+
     private func showWidgetInfoIfNeeded() {
         // Проверяем, было ли уже показано окно
         let hasSeenWidgetInfo = UserDefaults.standard.bool(forKey: "hasSeenWidgetInfo")
-        
+
         if !hasSeenWidgetInfo {
             // Показываем через 10 секунд
             DispatchQueue.main.asyncAfter(deadline: .now() + 10.0) {
@@ -120,41 +135,50 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
             }
         }
     }
-    
+
     deinit {
         NotificationCenter.default.removeObserver(self)
     }
-    
+
+    private var hasSavedSelection: Bool {
+        let key = isTeacherMode ? "selectedTeacherURL" : "selectedGroupURL"
+        return !(UserDefaults.standard.string(forKey: key) ?? "").isEmpty
+    }
+
     private func loadSavedMode() {
         // Проверяем, есть ли сохраненный режим, если нет - устанавливаем режим студента по умолчанию
         if UserDefaults.standard.object(forKey: "isTeacherMode") == nil {
             UserDefaults.standard.set(false, forKey: "isTeacherMode")
         }
-        
+
         let savedMode = UserDefaults.standard.bool(forKey: "isTeacherMode")
         if savedMode != isTeacherMode {
             isTeacherMode = savedMode
             switchMode()
         }
     }
-    
+
     @objc private func handleModeChange() {
         let newMode = UserDefaults.standard.bool(forKey: "isTeacherMode")
-        
+
         // Если режим не изменился, ничего не делаем
         if newMode == isTeacherMode {
             return
         }
-        
+
         // Показываем анимацию переключения режимов
         showModeSwitchAnimation {
             // Анимация завершена, ничего дополнительно не делаем
         }
-        
+
         // Переключаем режим во время показа анимации (когда пользователь не видит экран)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
             self.isTeacherMode = newMode
             self.switchMode()
+            // Без сохранённого выбора (или если переключали на экране выбора) — на выбор группы/преподавателя
+            let stayOnSelect = self.page == .select || !self.hasSavedSelection
+            self.page = .today
+            self.show(stayOnSelect ? .select : .today, animated: false)
         }
     }
 
@@ -168,25 +192,16 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
                 UserDefaults.standard.removeObject(forKey: "correspondenceSelectedISODate")
                 UserDefaults.standard.set(false, forKey: "correspondenceModeActive")
             }
-            
+
             // Теперь сюда приходит имя группы
             secondVC.selectedGroupURL = url
             secondVC.loadTimetableData()
 
-            // Переход на вторую view
-            UIView.animate(withDuration: 0.3, animations: {
-                self.firstVC.view.frame.origin.x = -self.view.bounds.width
-                self.secondVC.view.frame.origin.x = 0
-            })
-
-            // Обновление таб бара
-            currentItemIndex = 1
-            updateTabBarButtons()
-            updateIndicatorPosition(animated: true)
-            updateTabBar()
+            // Переход к расписанию
+            show(.today)
         }
     }
-    
+
     func didSelectTeacher(withURL url: String) {
         if isTeacherMode {
             // Очищаем старое расписание при смене преподавателя
@@ -194,358 +209,185 @@ class MainViewController: UIViewController, GroupSelectionDelegate, TeacherSelec
                 teacherSecondVC.fullSchedule = []
                 teacherSecondVC.schedule = []
             }
-            
+
             teacherSecondVC.selectedTeacherURL = url
             teacherSecondVC.loadTimetableData()
 
-            // Переход на вторую view
-            UIView.animate(withDuration: 0.3, animations: {
-                self.teacherFirstVC.view.frame.origin.x = -self.view.bounds.width
-                self.teacherSecondVC.view.frame.origin.x = 0
-            })
-
-            // Обновление таб бара
-            currentItemIndex = 1
-            updateTabBarButtons()
-            updateIndicatorPosition(animated: true)
-            updateTabBar()
+            // Переход к расписанию
+            show(.today)
         }
     }
 
-    private func updateTabBar() {
-        if currentItemIndex == 0 {
-            // Плавное скольжение для первого контроллера
-            if isTeacherMode {
-                UIView.animate(withDuration: 0.3, animations: {
-                    self.teacherFirstVC.view.frame.origin.x = 0
-                    self.teacherSecondVC.view.frame.origin.x = self.view.bounds.width
-                })
-            } else {
-                UIView.animate(withDuration: 0.3, animations: {
-                    self.firstVC.view.frame.origin.x = 0
-                    self.secondVC.view.frame.origin.x = self.view.bounds.width
-                })
+    // MARK: - Навигация
+
+    private func navTapped(_ item: FloatingNavBar.Item) {
+        switch item {
+        case .today:
+            MRMyTracker.trackEvent(name: "Перейти на экран расписания")
+            if page == .today {
+                // Повторное нажатие — вернуться к сегодняшнему дню
+                if isTeacherMode { teacherSecondVC.resetToToday() } else { secondVC.resetToToday() }
             }
-        } else {
-            // Плавное скольжение для второго контроллера
-            if isTeacherMode {
-                UIView.animate(withDuration: 0.3, animations: {
-                    self.teacherFirstVC.view.frame.origin.x = -self.view.bounds.width
-                    self.teacherSecondVC.view.frame.origin.x = 0
-                })
-            } else {
-                UIView.animate(withDuration: 0.3, animations: {
-                    self.firstVC.view.frame.origin.x = -self.view.bounds.width
-                    self.secondVC.view.frame.origin.x = 0
-                })
-            }
+            show(.today)
+        case .week:
+            MRMyTracker.trackEvent(name: "Перейти на экран расписания")
+            show(.week)
+        case .settings:
+            show(.settings)
         }
     }
 
-
-    private func setupTabBar() {
-        // Создаем контейнер для таб бара
-        tabBarContainer = UIView()
-        tabBarContainer.translatesAutoresizingMaskIntoConstraints = false
-        self.view.addSubview(tabBarContainer)
-
-        NSLayoutConstraint.activate([
-            tabBarContainer.bottomAnchor.constraint(equalTo: self.view.safeAreaLayoutGuide.bottomAnchor, constant: -10),
-            tabBarContainer.leadingAnchor.constraint(equalTo: self.view.leadingAnchor, constant: 40),
-            tabBarContainer.trailingAnchor.constraint(equalTo: self.view.trailingAnchor, constant: -40),
-            tabBarContainer.heightAnchor.constraint(equalToConstant: 70)
-        ])
-
-        // Тень для контейнера
-        tabBarContainer.layer.shadowColor = UIColor.black.cgColor
-        tabBarContainer.layer.shadowOffset = CGSize(width: 0, height: 4)
-        tabBarContainer.layer.shadowOpacity = 0.2
-        tabBarContainer.layer.shadowRadius = 10
-
-        // Создаем кастомный таб бар - непрозрачный белый контейнер
-        customTabBar = UIView()
-        customTabBar.translatesAutoresizingMaskIntoConstraints = false
-        tabBarContainer.addSubview(customTabBar)
-
-        NSLayoutConstraint.activate([
-            customTabBar.leadingAnchor.constraint(equalTo: tabBarContainer.leadingAnchor),
-            customTabBar.trailingAnchor.constraint(equalTo: tabBarContainer.trailingAnchor),
-            customTabBar.topAnchor.constraint(equalTo: tabBarContainer.topAnchor),
-            customTabBar.bottomAnchor.constraint(equalTo: tabBarContainer.bottomAnchor)
-        ])
-
-        // Непрозрачный фон без стеклянного эффекта
-        customTabBar.backgroundColor = .secondarySystemBackground
-        customTabBar.layer.cornerRadius = 20
-        customTabBar.layer.masksToBounds = true
-
-        // Создаем кнопки для таб бара
-        listButton = UIButton(type: .custom)
-        listButton.translatesAutoresizingMaskIntoConstraints = false
-        calendarButton = UIButton(type: .custom)
-        calendarButton.translatesAutoresizingMaskIntoConstraints = false
-
-        customTabBar.addSubview(listButton)
-        customTabBar.addSubview(calendarButton)
-
-        // Настройка кнопок
-        listButton.addTarget(self, action: #selector(listButtonTapped), for: .touchUpInside)
-        calendarButton.addTarget(self, action: #selector(calendarButtonTapped), for: .touchUpInside)
-        
-        // Устанавливаем renderingMode для кнопок, чтобы tintColor работал правильно
-        listButton.imageView?.contentMode = .scaleAspectFit
-        calendarButton.imageView?.contentMode = .scaleAspectFit
-
-        // Настройка контента кнопок с отступами (поднимаем иконки выше)
-        listButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 0, bottom: 20, right: 0)
-        calendarButton.contentEdgeInsets = UIEdgeInsets(top: 8, left: 0, bottom: 20, right: 0)
-        
-        // Расположение кнопок
-        NSLayoutConstraint.activate([
-            listButton.leadingAnchor.constraint(equalTo: customTabBar.leadingAnchor),
-            listButton.topAnchor.constraint(equalTo: customTabBar.topAnchor),
-            listButton.bottomAnchor.constraint(equalTo: customTabBar.bottomAnchor),
-            listButton.widthAnchor.constraint(equalTo: customTabBar.widthAnchor, multiplier: 0.5),
-            
-            calendarButton.trailingAnchor.constraint(equalTo: customTabBar.trailingAnchor),
-            calendarButton.topAnchor.constraint(equalTo: customTabBar.topAnchor),
-            calendarButton.bottomAnchor.constraint(equalTo: customTabBar.bottomAnchor),
-            calendarButton.widthAnchor.constraint(equalTo: customTabBar.widthAnchor, multiplier: 0.5)
-        ])
-
-        addIndicatorView()
-        updateTabBarButtons()
+    /// «Назад» на экране выбора: к расписанию, если выбор уже есть
+    private func closeSelection() {
+        guard hasSavedSelection else { return }
+        show(UserDefaults.standard.bool(forKey: "showFullSchedule") ? .week : .today)
     }
 
+    private var scheduleVC: UIViewController { isTeacherMode ? teacherSecondVC : secondVC }
+    private var selectVC: UIViewController { isTeacherMode ? teacherFirstVC : firstVC }
 
-    private func resizeAndTintImage(named imageName: String, size: CGSize, color: UIColor) -> UIImage? {
-        guard let originalImage = UIImage(named: imageName) else {
-            return nil
+    private func controller(for page: Page) -> UIViewController {
+        switch page {
+        case .today, .week: return scheduleVC
+        case .settings: return settingsVC
+        case .select: return selectVC
+        }
+    }
+
+    private func show(_ newPage: Page, animated: Bool = true) {
+        if newPage == .select && isGroupSelectionRemoved && !isTeacherMode && hasSavedSelection { return }
+
+        // Вкладки «Сегодня» и «Неделя» — один экран расписания в двух режимах
+        if newPage == .today || newPage == .week {
+            let week = newPage == .week
+            if isTeacherMode { teacherSecondVC.displayWeek = week } else { secondVC.displayWeek = week }
         }
 
-        // Изменяем размер изображения
-        let resizedImage = UIGraphicsImageRenderer(size: size).image { _ in
-            originalImage.draw(in: CGRect(origin: .zero, size: size))
+        let target = controller(for: newPage)
+        let all: [UIViewController] = [firstVC, secondVC, teacherFirstVC, teacherSecondVC, settingsVC]
+        let previous = all.first { !$0.view.isHidden }
+        page = newPage
+
+        switch newPage {
+        case .today: navBar.selected = .today
+        case .week: navBar.selected = .week
+        case .settings: navBar.selected = .settings
+        case .select: navBar.selected = nil
         }
-        
-        // Возвращаем как template, чтобы можно было применить цвет через tintColor
-        return resizedImage.withRenderingMode(.alwaysTemplate)
-    }
+        // На экране выбора нижняя панель не нужна (как в макете Select)
+        let navHidden = newPage == .select
+        firstVC.canGoBack = hasSavedSelection
+        teacherFirstVC.canGoBack = hasSavedSelection
 
-    private func addIndicatorView() {
-        indicatorView = UIView()
-        indicatorView.translatesAutoresizingMaskIntoConstraints = false
-        indicatorView.backgroundColor = UIColor(red: 13/255, green: 128/255, blue: 255/255, alpha: 1.0)
-        indicatorView.layer.cornerRadius = 2
-        customTabBar.addSubview(indicatorView)
+        guard previous !== target else {
+            setNavHidden(navHidden, animated: animated)
+            return
+        }
 
-        // Создаем constraint для начальной позиции (будет обновлен в viewDidLayoutSubviews)
-        indicatorLeadingConstraint = indicatorView.leadingAnchor.constraint(equalTo: customTabBar.leadingAnchor, constant: 0)
-        
-        NSLayoutConstraint.activate([
-            indicatorView.bottomAnchor.constraint(equalTo: customTabBar.bottomAnchor, constant: -12),
-            indicatorView.widthAnchor.constraint(equalToConstant: 45),
-            indicatorView.heightAnchor.constraint(equalToConstant: 4),
-            indicatorLeadingConstraint
-        ])
+        // Колбэки появления дочерним экранам — только когда главный экран уже на экране
+        let forwardsAppearance = view.window != nil
+        if forwardsAppearance {
+            previous?.beginAppearanceTransition(false, animated: animated)
+            target.beginAppearanceTransition(true, animated: animated)
+        }
+        target.view.isHidden = false
+        view.bringSubviewToFront(target.view)
+        view.bringSubviewToFront(navBar)
 
-        // Сразу позиционируем индикатор под активной вкладкой
-        indicatorView.alpha = 1
-    }
-
-    override func viewDidLayoutSubviews() {
-        super.viewDidLayoutSubviews()
-
-        // Обновляем позицию индикатора только если layout изменился
-        if customTabBar.frame.width > 0 && indicatorLeadingConstraint != nil {
-            // Используем constraint вместо frame для более надежной работы
-            let targetX = calculateIndicatorXPosition()
-            if abs(indicatorLeadingConstraint.constant - targetX) > 0.1 {
-                // При первом layout устанавливаем позицию синхронно и без анимации
-                if isFirstLayout {
-                    indicatorLeadingConstraint.constant = targetX
-                    isFirstLayout = false
-                } else {
-                    DispatchQueue.main.async {
-                        UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {
-                            self.indicatorLeadingConstraint.constant = targetX
-                            self.view.layoutIfNeeded()
-                        })
-                    }
-                }
-            } else if isFirstLayout {
-                // Если позиция уже правильная, просто помечаем что первый layout прошел
-                isFirstLayout = false
+        let finish = {
+            for vc in all where vc !== target { vc.view.isHidden = true }
+            if forwardsAppearance {
+                previous?.endAppearanceTransition()
+                target.endAppearanceTransition()
             }
         }
-    }
-
-    private func calculateIndicatorXPosition() -> CGFloat {
-        guard customTabBar.frame.width > 0 else { return 0 }
-        let itemWidth = customTabBar.frame.width / 2.0
-        return CGFloat(currentItemIndex) * itemWidth + itemWidth / 2 - 22.5 // 22.5 = половина ширины индикатора (45/2)
-    }
-
-    @objc private func listButtonTapped() {
-        currentItemIndex = 0
-        MRMyTracker.trackEvent(name: "Перейти на главный экран")
-        updateTabBarButtons()
-        updateTabBar()
-        updateIndicatorPosition(animated: true)
-        
-        // При каждом переключении на главный экран обновляем баннер
-        if isTeacherMode {
-            teacherFirstVC.refreshAdBannerIfNeeded()
-        } else {
-            firstVC.refreshAdBannerIfNeeded()
-        }
-    }
-
-    @objc private func calendarButtonTapped() {
-        currentItemIndex = 1
-        MRMyTracker.trackEvent(name: "Перейти на экран расписания")
-        updateTabBarButtons()
-        updateTabBar()
-        updateIndicatorPosition(animated: true)
-    }
-
-    private func updateTabBarButtons() {
-        let activeColor = UIColor(red: 13/255, green: 128/255, blue: 255/255, alpha: 1.0)
-        let inactiveColor = UIColor.gray
-
-        // Создаем изображения как template (один раз для каждой иконки)
-        let listImage = resizeAndTintImage(named: "list", size: CGSize(width: 35, height: 35), color: activeColor)
-        let calendarImage = resizeAndTintImage(named: "calendar", size: CGSize(width: 35, height: 35), color: activeColor)
-
-        // Активная иконка - синяя, неактивная - серая
-        if currentItemIndex == 0 {
-            // Первая вкладка активна - синяя, вторая неактивна - серая
-            listButton.setImage(listImage, for: .normal)
-            listButton.tintColor = activeColor
-            
-            calendarButton.setImage(calendarImage, for: .normal)
-            calendarButton.tintColor = inactiveColor
-        } else {
-            // Вторая вкладка активна - синяя, первая неактивна - серая
-            listButton.setImage(listImage, for: .normal)
-            listButton.tintColor = inactiveColor
-            
-            calendarButton.setImage(calendarImage, for: .normal)
-            calendarButton.tintColor = activeColor
-        }
-    }
-    
-
-
-    private func updateIndicatorPosition(animated: Bool) {
-        let targetX = calculateIndicatorXPosition()
-
         if animated {
-            UIView.animate(withDuration: 0.3, delay: 0, options: .curveEaseInOut, animations: {
-                self.indicatorLeadingConstraint.constant = targetX
-                self.view.layoutIfNeeded()
-            })
+            target.view.alpha = 0
+            target.view.transform = CGAffineTransform(translationX: 0, y: 8)
+            UIView.animate(withDuration: 0.28, delay: 0, options: [.curveEaseOut], animations: {
+                target.view.alpha = 1
+                target.view.transform = .identity
+            }, completion: { _ in finish() })
         } else {
-            indicatorLeadingConstraint.constant = targetX
-            view.layoutIfNeeded()
+            target.view.alpha = 1
+            finish()
+        }
+        setNavHidden(navHidden, animated: animated)
+
+        // При каждом переходе на выбор группы обновляем баннер
+        if newPage == .select {
+            if isTeacherMode {
+                teacherFirstVC.refreshAdBannerIfNeeded()
+            } else {
+                firstVC.refreshAdBannerIfNeeded()
+            }
         }
     }
-    
+
+    private func setNavHidden(_ hidden: Bool, animated: Bool) {
+        let changes = {
+            self.navBar.alpha = hidden ? 0 : 1
+            self.navBar.transform = hidden ? CGAffineTransform(translationX: 0, y: 24) : .identity
+        }
+        navBar.isUserInteractionEnabled = !hidden
+        if animated {
+            UIView.animate(withDuration: 0.28, delay: 0, usingSpringWithDamping: 0.9, initialSpringVelocity: 0, options: [.beginFromCurrentState], animations: changes)
+        } else {
+            changes()
+        }
+    }
+
     private func showModeSwitchAnimation(completion: @escaping () -> Void) {
         // Отменяем предыдущую анимацию, если она есть
         currentAnimationVC?.dismiss(animated: false)
-        
+
         let animationVC = ModeSwitchAnimationViewController()
         animationVC.modalPresentationStyle = .overFullScreen
         animationVC.completion = completion
         currentAnimationVC = animationVC
         present(animationVC, animated: false)
     }
-    
+
     private func switchMode() {
         if isTeacherMode {
-            // Переключаемся на режим преподавателя
-            firstVC.view.isHidden = true
-            secondVC.view.isHidden = true
-            teacherFirstVC.view.isHidden = false
-            teacherSecondVC.view.isHidden = false
-            
             // Очищаем старое расписание студента
             secondVC.fullSchedule = []
             secondVC.schedule = []
-            
-            // Сбрасываем позиции
-            currentItemIndex = 0
-            teacherFirstVC.view.frame.origin.x = 0
-            teacherSecondVC.view.frame.origin.x = self.view.bounds.width
-            
+
             // Загружаем сохраненные данные преподавателя
             if let selectedTeacherURL = UserDefaults.standard.string(forKey: "selectedTeacherURL") {
                 // Теперь здесь хранится ФИО преподавателя
                 teacherSecondVC.selectedTeacherURL = selectedTeacherURL
                 teacherSecondVC.loadTimetableData()
             }
-            
+
             // При переключении в режим преподавателя обновляем баннер на первом экране
             teacherFirstVC.refreshAdBannerIfNeeded()
         } else {
-            // Переключаемся на режим студента
-            firstVC.view.isHidden = false
-            secondVC.view.isHidden = false
-            teacherFirstVC.view.isHidden = true
-            teacherSecondVC.view.isHidden = true
-            
             // Очищаем старое расписание преподавателя
             teacherSecondVC.fullSchedule = []
             teacherSecondVC.schedule = []
-            
-            // Сбрасываем позиции
-            currentItemIndex = 0
-            firstVC.view.frame.origin.x = 0
-            secondVC.view.frame.origin.x = self.view.bounds.width
-            
+
             // Загружаем сохраненные данные группы
             if let selectedGroupURL = UserDefaults.standard.string(forKey: "selectedGroupURL") {
                 secondVC.selectedGroupURL = selectedGroupURL
                 secondVC.loadTimetableData()
             }
-            
+
             // При переключении в режим студента обновляем баннер на первом экране
             firstVC.refreshAdBannerIfNeeded()
         }
-        
-        updateTabBarButtons()
-        updateTabBar()
-        updateIndicatorPosition(animated: false)
+        updateTabBarAccess(isGroupSelectionRemoved: UserDefaults.standard.bool(forKey: "removeGroupSelection"))
     }
 
+    /// «Убрать выбор группы»: прячем кнопку поиска и не даём открыть выбор из шапки
     func updateTabBarAccess(isGroupSelectionRemoved: Bool) {
-        if isGroupSelectionRemoved && !isTeacherMode {
-            // Скрываем первый экран выбора группы
-            firstVC.view.isHidden = true
-            // Скрываем таб бар
-            customTabBar.isHidden = true
-            tabBarContainer.isHidden = true
-            // Показываем только окно расписания
-            secondVC.view.isHidden = false
-            // Перемещаем окно расписания на позицию 0
-            secondVC.view.frame.origin.x = 0
-            // Update the current tab index
-            currentItemIndex = 1
-            updateTabBarButtons()
-        } else {
-            // Показываем первый экран выбора группы
-            if !isTeacherMode {
-                firstVC.view.isHidden = false
-            }
-            // Показываем таб бар
-            customTabBar.isHidden = false
-            tabBarContainer.isHidden = false
-            // Update the current tab index
-            currentItemIndex = 0
-            updateTabBarButtons()
-            updateTabBar()
-            updateIndicatorPosition(animated: false)
+        self.isGroupSelectionRemoved = isGroupSelectionRemoved
+        let locked = isGroupSelectionRemoved && !isTeacherMode
+        navBar.isSearchHidden = locked
+        secondVC.canChangeGroup = !locked
+        if locked && page == .select && hasSavedSelection {
+            show(.today, animated: false)
         }
     }
 }

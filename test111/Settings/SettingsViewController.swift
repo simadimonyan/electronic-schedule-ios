@@ -10,609 +10,90 @@ import MyTrackerSDK
 
 class SettingsViewController: UIViewController {
 
+    /// Открыть выбор группы/преподавателя (кнопка «Сменить» в карточке профиля)
+    var onOpenSelection: (() -> Void)?
+
     // Скролл-контейнер для всех настроек
     private let scrollView: UIScrollView = {
         let scroll = UIScrollView()
         scroll.translatesAutoresizingMaskIntoConstraints = false
         scroll.showsVerticalScrollIndicator = false
         scroll.alwaysBounceVertical = true
+        scroll.contentInsetAdjustmentBehavior = .never
         return scroll
     }()
 
-    private let contentView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        return view
-    }()
+    private let backdrop = BackdropView()
+    private let stack = UIStackView.ds(.vertical)
+    private var stackTop: NSLayoutConstraint!
+    private let backButton = GlassIconButton(symbol: "chevron.left")
 
-    let showFullScheduleSwitch: UISwitch = {
-        let switchControl = UISwitch()
-        switchControl.translatesAutoresizingMaskIntoConstraints = false
-        switchControl.addTarget(self, action: #selector(switchChanged), for: .valueChanged)
-        return switchControl
-    }()
+    let showFullScheduleSwitch = UISwitch()
+    let removeGroupSelectionSwitch = UISwitch()
+    let notificationsSwitch = UISwitch()
+    let syncWeekSwitch = UISwitch()
+    let changeWeekSegmentedControl = DSSegmentedControl(items: ["1", "2"], mono: true)
+    let modeSegmentedControl = DSSegmentedControl(items: ["Студент", "Преподаватель"])
 
-    let removeGroupSelectionSwitch: UISwitch = {
-        let switchControl = UISwitch()
-        switchControl.translatesAutoresizingMaskIntoConstraints = false
-        switchControl.addTarget(self, action: #selector(switchChanged), for: .valueChanged)
-        return switchControl
-    }()
+    private var showFullScheduleRow: DSListRow!
+    private var changeWeekRow: DSListRow!
+    private var notificationTimeRow: DSListRow!
+    private let notificationTimeStepper = MinutesStepper()
+    private let profileCard = UIView()
+    private var themeCards: [ThemeCard] = []
+    private let footerLabel = UILabel()
 
-    let customCardView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView2: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView3: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView4: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView5: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView6: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView7: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let customCardView8: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let titleLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Показать всю неделю"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let removeGroupSelectionLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Убрать выбор группы"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let changeWeekLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Сменить неделю"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let modeLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Режим приложения"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        label.numberOfLines = 0 // Разрешаем многострочный текст
-        label.lineBreakMode = .byWordWrapping // Обрезаем по словам
-        return label
-    }()
-
-    let notificationsLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Уведомления о парах"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let syncWeekLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Синхронизировать неделю"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let aboutLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "О приложении"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    // Карточка «Оставить отзыв» (опросы обратной связи)
-    let feedbackCardView: UIView = {
-        let view = UIView()
-        view.translatesAutoresizingMaskIntoConstraints = false
-        view.backgroundColor = .secondarySystemBackground
-        view.layer.cornerRadius = 12
-        view.layer.shadowColor = UIColor.black.cgColor
-        view.layer.shadowOpacity = 0.1
-        view.layer.shadowOffset = CGSize(width: 0, height: 2)
-        view.layer.shadowRadius = 4
-        return view
-    }()
-
-    let feedbackLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Оставить отзыв"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let feedbackChevron: UIImageView = {
-        let image = UIImageView(image: UIImage(systemName: "bubble.left.and.bubble.right"))
-        image.translatesAutoresizingMaskIntoConstraints = false
-        image.tintColor = .systemBlue
-        image.contentMode = .scaleAspectFit
-        return image
-    }()
-
-    let notificationTimeLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Время уведомления"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        return label
-    }()
-
-    let notificationTimeValueLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "5 минут"
-        label.font = UIFont.systemFont(ofSize: 14, weight: .medium)
-        label.textColor = .systemBlue
-        label.textAlignment = .right
-        return label
-    }()
-
-    let notificationsSwitch: UISwitch = {
-        let switchControl = UISwitch()
-        switchControl.translatesAutoresizingMaskIntoConstraints = false
-        switchControl.addTarget(self, action: #selector(notificationsSwitchChanged), for: .valueChanged)
-        return switchControl
-    }()
-
-    let notificationTimeSlider: UISlider = {
-        let slider = UISlider()
-        slider.translatesAutoresizingMaskIntoConstraints = false
-        slider.minimumValue = 1
-        slider.maximumValue = 30
-        slider.value = 5
-        slider.addTarget(self, action: #selector(notificationTimeSliderChanged), for: .valueChanged)
-        return slider
-    }()
-
-    let syncWeekSwitch: UISwitch = {
-        let switchControl = UISwitch()
-        switchControl.translatesAutoresizingMaskIntoConstraints = false
-        switchControl.addTarget(self, action: #selector(syncWeekSwitchChanged), for: .valueChanged)
-        return switchControl
-    }()
-
-    lazy var footerLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.numberOfLines = 0
-        label.textAlignment = .center
-        self.updateFooterLabel(label)
-        return label
-    }()
-
-    private func updateFooterLabel(_ label: UILabel) {
-        // Создаем текст
-        let text = NSMutableAttributedString(string: "По всем проблемам и предложениям пишите разработчику  ")
-
-        // Выбираем иконку Telegram в зависимости от темы
-        let telegramIconName: String
-        if ThemeManager.current == .dark {
-            telegramIconName = "telegram_white"
-        } else if ThemeManager.current == .system {
-            // Для системной темы проверяем текущую тему интерфейса
-            let isDark = traitCollection.userInterfaceStyle == .dark
-            telegramIconName = isDark ? "telegram_white" : "telegram"
-        } else {
-            telegramIconName = "telegram"
-        }
-
-        // Добавляем изображение Telegram
-        if let telegramLogo = UIImage(named: telegramIconName) {
-            let textAttachment = NSTextAttachment()
-            textAttachment.image = telegramLogo
-
-            // Настраиваем размер изображения
-            let logoHeight: CGFloat = 16
-            let logoRatio = telegramLogo.size.width / telegramLogo.size.height
-            textAttachment.bounds = CGRect(x: 0, y: -4, width: logoHeight * logoRatio, height: logoHeight)
-
-            let imageString = NSAttributedString(attachment: textAttachment)
-            text.append(imageString)
-        }
-
-        // Добавляем текст с @tsepilo_v
-        text.append(NSAttributedString(string: " @tsep1lov"))
-
-        // Применяем атрибутированную строку к метке
-        label.attributedText = text
-        label.font = UIFont.systemFont(ofSize: 14, weight: .regular)
-        label.textColor = .secondaryLabel
+    private var isPushed: Bool {
+        guard let nav = navigationController else { return false }
+        return nav.viewControllers.count > 1 && nav.viewControllers.last === self
     }
-
-    // Высота блока с дополнительными настройками уведомлений (слайдер времени)
-    private var notificationTimeHeightConstraint: NSLayoutConstraint?
-    // Констрейнты положения карточки темы относительно уведомлений
-    private var themeTopToNotificationsMainConstraint: NSLayoutConstraint?
-    private var themeTopToNotificationTimeConstraint: NSLayoutConstraint?
-
-    
-
-    let changeWeekSegmentedControl: UISegmentedControl = {
-        let segmentedControl = UISegmentedControl(items: ["Неделя 1", "Неделя 2"])
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        segmentedControl.selectedSegmentIndex = UserDefaults.standard.bool(forKey: "isOddWeek") ? 0 : 1
-        segmentedControl.addTarget(self, action: #selector(changeWeek), for: .valueChanged)
-        return segmentedControl
-    }()
-
-    let themeLabel: UILabel = {
-        let label = UILabel()
-        label.translatesAutoresizingMaskIntoConstraints = false
-        label.text = "Тема"
-        label.font = UIFont.systemFont(ofSize: 16, weight: .semibold)
-        label.textColor = .label
-        label.numberOfLines = 0
-        label.lineBreakMode = .byWordWrapping
-        return label
-    }()
-
-    let themeSegmentedControl: UISegmentedControl = {
-        let segmentedControl = UISegmentedControl(items: ["Светлая", "Тёмная", "Системная"])
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        // Выставляем выбранный сегмент на основе текущей темы
-        segmentedControl.selectedSegmentIndex = ThemeManager.current.rawValue
-        segmentedControl.addTarget(self, action: #selector(themeChanged), for: .valueChanged)
-        let font = UIFont.systemFont(ofSize: 12, weight: .medium)
-        segmentedControl.setTitleTextAttributes([.font: font], for: .normal)
-        segmentedControl.setTitleTextAttributes([.font: font], for: .selected)
-        return segmentedControl
-    }()
-
-    let modeSegmentedControl: UISegmentedControl = {
-        let segmentedControl = UISegmentedControl(items: ["Студент", "Препод."])
-        segmentedControl.translatesAutoresizingMaskIntoConstraints = false
-        segmentedControl.selectedSegmentIndex = UserDefaults.standard.bool(forKey: "isTeacherMode") ? 1 : 0
-        segmentedControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
-        
-        // Настраиваем размер шрифта для лучшего отображения
-        let font = UIFont.systemFont(ofSize: 11, weight: .medium) // Уменьшаем размер шрифта
-        segmentedControl.setTitleTextAttributes([.font: font], for: .normal)
-        segmentedControl.setTitleTextAttributes([.font: font], for: .selected)
-        
-        return segmentedControl
-    }()
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        
-        // Отключаем все анимации с самого начала
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        
-        view.backgroundColor = .systemGroupedBackground
-        // Тема контролируется глобально через ThemeManager
+        view.backgroundColor = DS.Color.bg
 
-        title = "Настройки"
+        view.addSubview(backdrop)
+        backdrop.showsGrid = false
+        backdrop.showsSky = false
+        NSLayoutConstraint.activate([
+            backdrop.topAnchor.constraint(equalTo: view.topAnchor),
+            backdrop.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            backdrop.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            backdrop.heightAnchor.constraint(equalToConstant: 300)
+        ])
 
-        // Настройка scrollView
         view.addSubview(scrollView)
-        scrollView.addSubview(contentView)
-
+        scrollView.pinEdges(to: view)
+        scrollView.addSubview(stack)
+        stackTop = stack.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor, constant: 66)
         NSLayoutConstraint.activate([
-            scrollView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor),
-            scrollView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            scrollView.trailingAnchor.constraint(equalTo: view.trailingAnchor),
-            scrollView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-
-            contentView.topAnchor.constraint(equalTo: scrollView.contentLayoutGuide.topAnchor),
-            contentView.leadingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.leadingAnchor),
-            contentView.trailingAnchor.constraint(equalTo: scrollView.contentLayoutGuide.trailingAnchor),
-            contentView.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor),
-            contentView.widthAnchor.constraint(equalTo: scrollView.frameLayoutGuide.widthAnchor)
+            stackTop,
+            stack.leadingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.leadingAnchor, constant: DS.Inset.side),
+            stack.trailingAnchor.constraint(equalTo: scrollView.frameLayoutGuide.trailingAnchor, constant: -DS.Inset.side),
+            stack.bottomAnchor.constraint(equalTo: scrollView.contentLayoutGuide.bottomAnchor, constant: -DS.Inset.bottomForNav)
         ])
 
-        // Настройка кастомной ячейки
-        contentView.addSubview(customCardView)
-        customCardView.addSubview(titleLabel)
-        customCardView.addSubview(showFullScheduleSwitch)
-
-        // Настройка второй кастомной ячейки
-        contentView.addSubview(customCardView2)
-        customCardView2.addSubview(removeGroupSelectionLabel)
-        customCardView2.addSubview(removeGroupSelectionSwitch)
-
-        // Настройка третьей кастомной ячейки
-        contentView.addSubview(customCardView3)
-        customCardView3.addSubview(changeWeekLabel)
-        customCardView3.addSubview(changeWeekSegmentedControl)
-
-        // Настройка четвертой кастомной ячейки для режима
-        contentView.addSubview(customCardView4)
-        customCardView4.addSubview(modeLabel)
-        customCardView4.addSubview(modeSegmentedControl)
-
-        // Настройка пятой кастомной ячейки для уведомлений
-        contentView.addSubview(customCardView5)
-        customCardView5.addSubview(notificationsLabel)
-        customCardView5.addSubview(notificationsSwitch)
-
-        // Настройка шестой кастомной ячейки для времени уведомлений
-        contentView.addSubview(customCardView6)
-        customCardView6.addSubview(notificationTimeLabel)
-        customCardView6.addSubview(notificationTimeValueLabel)
-        customCardView6.addSubview(notificationTimeSlider)
-
-        // Настройка седьмой кастомной ячейки для синхронизации недели
-        contentView.addSubview(customCardView7)
-        customCardView7.addSubview(syncWeekLabel)
-        customCardView7.addSubview(syncWeekSwitch)
-
-        // Настройка восьмой кастомной ячейки "О приложении"
-        contentView.addSubview(customCardView8)
-        customCardView8.addSubview(aboutLabel)
-        let aboutTap = UITapGestureRecognizer(target: self, action: #selector(showAbout))
-        customCardView8.addGestureRecognizer(aboutTap)
-
-        // Карточка «Оставить отзыв» — под «О приложении»
-        contentView.addSubview(feedbackCardView)
-        feedbackCardView.addSubview(feedbackLabel)
-        feedbackCardView.addSubview(feedbackChevron)
-        let feedbackTap = UITapGestureRecognizer(target: self, action: #selector(showFeedback))
-        feedbackCardView.addGestureRecognizer(feedbackTap)
-
-        // Настройка девятой кастомной ячейки для темы
-        let customCardView9: UIView = {
-            let view = UIView()
-            view.translatesAutoresizingMaskIntoConstraints = false
-            view.backgroundColor = .secondarySystemBackground
-            view.layer.cornerRadius = 12
-            view.layer.shadowColor = UIColor.black.cgColor
-            view.layer.shadowOpacity = 0.1
-            view.layer.shadowOffset = CGSize(width: 0, height: 2)
-            view.layer.shadowRadius = 4
-            return view
-        }()
-
-        contentView.addSubview(customCardView9)
-        customCardView9.addSubview(themeLabel)
-        customCardView9.addSubview(themeSegmentedControl)
-
-        // Добавление footerLabel внизу контента
-        contentView.addSubview(footerLabel)
-        
-
+        backButton.accessibilityLabel = "Назад"
+        backButton.onTap = { [weak self] in self?.backButtonTapped() }
+        view.addSubview(backButton)
         NSLayoutConstraint.activate([
-            customCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView.topAnchor.constraint(equalTo: contentView.topAnchor, constant: 20),
-            customCardView.heightAnchor.constraint(equalToConstant: 60),
-
-            titleLabel.leadingAnchor.constraint(equalTo: customCardView.leadingAnchor, constant: 16),
-            titleLabel.centerYAnchor.constraint(equalTo: customCardView.centerYAnchor),
-
-            showFullScheduleSwitch.trailingAnchor.constraint(equalTo: customCardView.trailingAnchor, constant: -16),
-            showFullScheduleSwitch.centerYAnchor.constraint(equalTo: customCardView.centerYAnchor),
-
-            customCardView2.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView2.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView2.topAnchor.constraint(equalTo: customCardView.bottomAnchor, constant: 20),
-            customCardView2.heightAnchor.constraint(equalToConstant: 60),
-
-            removeGroupSelectionLabel.leadingAnchor.constraint(equalTo: customCardView2.leadingAnchor, constant: 16),
-            removeGroupSelectionLabel.centerYAnchor.constraint(equalTo: customCardView2.centerYAnchor),
-
-            removeGroupSelectionSwitch.trailingAnchor.constraint(equalTo: customCardView2.trailingAnchor, constant: -16),
-            removeGroupSelectionSwitch.centerYAnchor.constraint(equalTo: customCardView2.centerYAnchor),
-
-            customCardView3.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView3.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView3.topAnchor.constraint(equalTo: customCardView2.bottomAnchor, constant: 20),
-            customCardView3.heightAnchor.constraint(equalToConstant: 60),
-
-            changeWeekLabel.leadingAnchor.constraint(equalTo: customCardView3.leadingAnchor, constant: 16),
-            changeWeekLabel.centerYAnchor.constraint(equalTo: customCardView3.centerYAnchor),
-
-            changeWeekSegmentedControl.trailingAnchor.constraint(equalTo: customCardView3.trailingAnchor, constant: -16),
-            changeWeekSegmentedControl.centerYAnchor.constraint(equalTo: customCardView3.centerYAnchor),
-
-            customCardView4.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView4.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView4.topAnchor.constraint(equalTo: customCardView7.bottomAnchor, constant: 20),
-            customCardView4.heightAnchor.constraint(equalToConstant: 60),
-
-            modeLabel.leadingAnchor.constraint(equalTo: customCardView4.leadingAnchor, constant: 16),
-            modeLabel.trailingAnchor.constraint(equalTo: modeSegmentedControl.leadingAnchor, constant: -16),
-            modeLabel.centerYAnchor.constraint(equalTo: customCardView4.centerYAnchor),
-
-            modeSegmentedControl.trailingAnchor.constraint(equalTo: customCardView4.trailingAnchor, constant: -16),
-            modeSegmentedControl.centerYAnchor.constraint(equalTo: customCardView4.centerYAnchor),
-            modeSegmentedControl.widthAnchor.constraint(equalToConstant: 200), // Увеличиваем ширину еще больше
-
-            customCardView5.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView5.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView5.topAnchor.constraint(equalTo: customCardView4.bottomAnchor, constant: 20),
-            customCardView5.heightAnchor.constraint(equalToConstant: 60),
-
-            notificationsLabel.leadingAnchor.constraint(equalTo: customCardView5.leadingAnchor, constant: 16),
-            notificationsLabel.centerYAnchor.constraint(equalTo: customCardView5.centerYAnchor),
-
-            notificationsSwitch.trailingAnchor.constraint(equalTo: customCardView5.trailingAnchor, constant: -16),
-            notificationsSwitch.centerYAnchor.constraint(equalTo: customCardView5.centerYAnchor),
-
-            customCardView6.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView6.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView6.topAnchor.constraint(equalTo: customCardView5.bottomAnchor, constant: 20),
+            backButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 4),
+            backButton.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: DS.Inset.side)
         ])
+        backButton.isHidden = true
 
-        // Отдельно сохраняем констрейнт высоты для анимации появления/скрытия
-        notificationTimeHeightConstraint = customCardView6.heightAnchor.constraint(equalToConstant: 60)
-        notificationTimeHeightConstraint?.isActive = true
-
-        // Констрейнты для карточки темы: либо под основной карточкой уведомлений, либо под дополнительной
-        themeTopToNotificationTimeConstraint = customCardView9.topAnchor.constraint(equalTo: customCardView6.bottomAnchor, constant: 20)
-        themeTopToNotificationsMainConstraint = customCardView9.topAnchor.constraint(equalTo: customCardView5.bottomAnchor, constant: 20)
-
-        // Активируем подходящий вариант в зависимости от текущего состояния переключателя
-        if notificationsSwitch.isOn {
-            themeTopToNotificationTimeConstraint?.isActive = true
-        } else {
-            themeTopToNotificationsMainConstraint?.isActive = true
+        [showFullScheduleSwitch, removeGroupSelectionSwitch, notificationsSwitch, syncWeekSwitch].forEach {
+            $0.onTintColor = DS.Color.brand
         }
+        showFullScheduleSwitch.addTarget(self, action: #selector(switchChanged), for: .valueChanged)
+        removeGroupSelectionSwitch.addTarget(self, action: #selector(switchChanged), for: .valueChanged)
+        notificationsSwitch.addTarget(self, action: #selector(notificationsSwitchChanged), for: .valueChanged)
+        syncWeekSwitch.addTarget(self, action: #selector(syncWeekSwitchChanged), for: .valueChanged)
+        changeWeekSegmentedControl.addTarget(self, action: #selector(changeWeek), for: .valueChanged)
+        modeSegmentedControl.addTarget(self, action: #selector(modeChanged), for: .valueChanged)
+        notificationTimeStepper.onChange = { [weak self] minutes in self?.notificationTimeChanged(minutes) }
 
-        NSLayoutConstraint.activate([
-
-            notificationTimeLabel.leadingAnchor.constraint(equalTo: customCardView6.leadingAnchor, constant: 16),
-            notificationTimeLabel.centerYAnchor.constraint(equalTo: customCardView6.centerYAnchor),
-
-            notificationTimeValueLabel.trailingAnchor.constraint(equalTo: customCardView6.trailingAnchor, constant: -16),
-            notificationTimeValueLabel.centerYAnchor.constraint(equalTo: customCardView6.centerYAnchor),
-
-            notificationTimeSlider.leadingAnchor.constraint(equalTo: notificationTimeLabel.trailingAnchor, constant: 10),
-            notificationTimeSlider.trailingAnchor.constraint(equalTo: notificationTimeValueLabel.leadingAnchor, constant: -10),
-            notificationTimeSlider.centerYAnchor.constraint(equalTo: customCardView6.centerYAnchor),
-
-            customCardView7.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView7.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView7.topAnchor.constraint(equalTo: customCardView3.bottomAnchor, constant: 20),
-            customCardView7.heightAnchor.constraint(equalToConstant: 60),
-
-            syncWeekLabel.leadingAnchor.constraint(equalTo: customCardView7.leadingAnchor, constant: 16),
-            syncWeekLabel.centerYAnchor.constraint(equalTo: customCardView7.centerYAnchor),
-
-            syncWeekSwitch.trailingAnchor.constraint(equalTo: customCardView7.trailingAnchor, constant: -16),
-            syncWeekSwitch.centerYAnchor.constraint(equalTo: customCardView7.centerYAnchor),
-
-            // Карточка темы сразу после уведомлений
-            customCardView9.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView9.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView9.heightAnchor.constraint(equalToConstant: 60),
-
-            themeLabel.leadingAnchor.constraint(equalTo: customCardView9.leadingAnchor, constant: 16),
-            themeLabel.trailingAnchor.constraint(equalTo: themeSegmentedControl.leadingAnchor, constant: -16),
-            themeLabel.centerYAnchor.constraint(equalTo: customCardView9.centerYAnchor),
-
-            themeSegmentedControl.trailingAnchor.constraint(equalTo: customCardView9.trailingAnchor, constant: -16),
-            themeSegmentedControl.centerYAnchor.constraint(equalTo: customCardView9.centerYAnchor),
-
-            // "О приложении" ниже темы
-            customCardView8.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            customCardView8.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            customCardView8.topAnchor.constraint(equalTo: customCardView9.bottomAnchor, constant: 20),
-            customCardView8.heightAnchor.constraint(equalToConstant: 60),
-
-            aboutLabel.leadingAnchor.constraint(equalTo: customCardView8.leadingAnchor, constant: 16),
-            aboutLabel.centerYAnchor.constraint(equalTo: customCardView8.centerYAnchor),
-
-            footerLabel.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            footerLabel.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            footerLabel.bottomAnchor.constraint(equalTo: contentView.bottomAnchor, constant: -20),
-            feedbackCardView.leadingAnchor.constraint(equalTo: contentView.leadingAnchor, constant: 16),
-            feedbackCardView.trailingAnchor.constraint(equalTo: contentView.trailingAnchor, constant: -16),
-            feedbackCardView.topAnchor.constraint(equalTo: customCardView8.bottomAnchor, constant: 20),
-            feedbackCardView.heightAnchor.constraint(equalToConstant: 60),
-
-            feedbackLabel.leadingAnchor.constraint(equalTo: feedbackCardView.leadingAnchor, constant: 16),
-            feedbackLabel.centerYAnchor.constraint(equalTo: feedbackCardView.centerYAnchor),
-
-            feedbackChevron.trailingAnchor.constraint(equalTo: feedbackCardView.trailingAnchor, constant: -16),
-            feedbackChevron.centerYAnchor.constraint(equalTo: feedbackCardView.centerYAnchor),
-            feedbackChevron.widthAnchor.constraint(equalToConstant: 24),
-            feedbackChevron.heightAnchor.constraint(equalToConstant: 24),
-
-            footerLabel.topAnchor.constraint(greaterThanOrEqualTo: feedbackCardView.bottomAnchor, constant: 24)
-        ])
+        buildContent()
 
         // Загрузка состояния переключателей из UserDefaults
         let isFullScheduleEnabled = UserDefaults.standard.bool(forKey: "showFullSchedule")
@@ -626,68 +107,212 @@ class SettingsViewController: UIViewController {
         // Загрузка настроек уведомлений
         let notificationManager = NotificationManager.shared
         notificationsSwitch.isOn = notificationManager.isNotificationsEnabled
-        notificationTimeSlider.value = Float(notificationManager.notificationTimeMinutes)
-        updateNotificationTimeLabel()
-        
-        // Показываем/скрываем слайдер времени в зависимости от состояния уведомлений
-        updateNotificationTimeVisibility()
-        
+        notificationTimeStepper.minutes = notificationManager.notificationTimeMinutes
+        updateNotificationTimeVisibility(animated: false)
+
         // Отладочная информация
         notificationManager.debugNotifications()
         notificationManager.checkNotificationPermissions { _ in }
 
-        // Настройка цветов навигации (заголовок и кнопка "Назад")
-        updateNavigationBarColors()
-
         // Загрузка настройки синхронизации недели
         let isSyncEnabled = UserDefaults.standard.bool(forKey: "syncWeekEnabled")
         syncWeekSwitch.isOn = isSyncEnabled
+        changeWeekSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isOddWeek") ? 0 : 1
+        modeSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isTeacherMode") ? 1 : 0
         applySyncWeekUIState(isEnabled: isSyncEnabled)
         if isSyncEnabled {
             syncWeekWithServer(applyOnlyUI: false)
         }
-        
-        // Принудительно устанавливаем все элементы в финальные позиции без анимации
-        // Это нужно сделать до того, как view появится на экране
-        view.setNeedsLayout()
-        view.layoutIfNeeded()
-        scrollView.setNeedsLayout()
-        scrollView.layoutIfNeeded()
-        contentView.setNeedsLayout()
-        contentView.layoutIfNeeded()
-        
-        // Убеждаемся, что все элементы находятся на своих местах
-        // и не имеют никаких transform или смещений
-        let allViews: [UIView] = [
-            customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
-        ]
-        for cardView in allViews {
-            cardView.transform = .identity
-            if cardView != customCardView6 { // customCardView6 может иметь alpha < 1.0 если уведомления выключены
-                cardView.alpha = 1.0
-            }
-        }
-        // Обрабатываем scrollView и contentView отдельно, так как они не опциональные
-        scrollView.transform = .identity
-        contentView.transform = .identity
-        
-        CATransaction.commit()
+
+        NotificationCenter.default.addObserver(self, selector: #selector(selectionDidChange), name: Notification.Name("reloadSchedule"), object: nil)
+        NotificationCenter.default.addObserver(self, selector: #selector(selectionDidChange), name: Notification.Name("modeChanged"), object: nil)
     }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // Актуализируем доступность "Показать всю неделю" при каждом открытии настроек.
+        applyCorrespondenceFullWeekAvailability()
+        refreshProfileCard()
+        modeSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isTeacherMode") ? 1 : 0
+        changeWeekSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isOddWeek") ? 0 : 1
+        refreshThemeCards()
+        backButton.isHidden = !isPushed
+        if isPushed {
+            navigationController?.setNavigationBarHidden(true, animated: animated)
+        }
+        let top = max(view.safeAreaInsets.top, 20)
+        stackTop.constant = isPushed ? top + 60 : top + 12
+    }
+
+    override func viewSafeAreaInsetsDidChange() {
+        super.viewSafeAreaInsetsDidChange()
+        let top = max(view.safeAreaInsets.top, 20)
+        stackTop.constant = isPushed ? top + 60 : top + 12
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        #if DEBUG
+        // Демонстрация опросов: прокрутить к «Оставить отзыв»
+        if SurveysDebug.openSettings, let row = feedbackRow {
+            let rect = row.convert(row.bounds, to: scrollView).insetBy(dx: 0, dy: -20)
+            scrollView.scrollRectToVisible(rect, animated: true)
+        }
+        #endif
+    }
+
+    private var feedbackRow: DSListRow?
+
+    // MARK: - Вёрстка
+
+    private func buildContent() {
+        stack.addArrangedSubview(UILabel.display("Настройки", size: 36))
+        stack.setCustomSpacing(16, after: stack.arrangedSubviews.last!)
+
+        // Карточка «Моё расписание»
+        stack.addArrangedSubview(profileCard)
+        refreshProfileCard()
+
+        // Режим приложения
+        addSection("Режим приложения", rows: [
+            accessoryRow(symbol: "person", title: "Я", accessory: modeSegmentedControl)
+        ])
+
+        // Расписание
+        let syncRow = accessoryRow(symbol: "arrow.triangle.2.circlepath", title: "Определять неделю", subtitle: "Чётность приходит с сервера ИМСИТ", accessory: syncWeekSwitch)
+        changeWeekRow = accessoryRow(symbol: "calendar", title: "Текущая неделя", accessory: changeWeekSegmentedControl)
+        showFullScheduleRow = accessoryRow(symbol: "tablecells", title: "Открывать сразу неделю", subtitle: "Вместо экрана «Сегодня»", accessory: showFullScheduleSwitch)
+        let removeRow = accessoryRow(symbol: "magnifyingglass", title: "Убрать выбор группы", subtitle: "Скрыть поиск группы в нижней панели", accessory: removeGroupSelectionSwitch)
+        addSection("Расписание", rows: [syncRow, changeWeekRow, showFullScheduleRow, removeRow])
+
+        // Уведомления
+        let notificationsRow = accessoryRow(symbol: "bell", title: "Уведомления о парах", accessory: notificationsSwitch)
+        notificationTimeRow = accessoryRow(symbol: "clock", title: "Напоминать за", accessory: notificationTimeStepper)
+        addSection("Уведомления", rows: [notificationsRow, notificationTimeRow])
+
+        // Ещё
+        let widgetsRow = DSListRow(symbol: "square.grid.2x2", title: "Виджеты", value: "2 размера", chevron: true)
+        widgetsRow.onTap = { [weak self] in self?.showWidgets() }
+        let feedback = DSListRow(symbol: "bubble.left.and.bubble.right", title: "Оставить отзыв", chevron: true)
+        feedback.onTap = { [weak self] in self?.showFeedback() }
+        feedbackRow = feedback
+        let telegramRow = DSListRow(symbol: "paperplane", title: "Telegram-канал", externalLink: true)
+        telegramRow.onTap = { [weak self] in self?.openTelegram() }
+        let version = Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? ""
+        let aboutRow = DSListRow(symbol: "info.circle", title: "О приложении", value: version.isEmpty ? nil : "v" + version, chevron: true)
+        aboutRow.onTap = { [weak self] in self?.showAbout() }
+        addSection("Ещё", rows: [widgetsRow, feedback, telegramRow, aboutRow])
+
+        // Оформление
+        addTitle("Оформление")
+        let themes = UIStackView.ds(.horizontal, spacing: 8)
+        themes.distribution = .fillEqually
+        for theme in [AppTheme.light, .dark, .system] {
+            let card = ThemeCard(theme: theme)
+            card.onTap = { [weak self] in self?.themeTapped(theme) }
+            themeCards.append(card)
+            themes.addArrangedSubview(card)
+        }
+        stack.addArrangedSubview(themes)
+        refreshThemeCards()
+
+        // Подвал
+        footerLabel.numberOfLines = 0
+        let text = NSMutableAttributedString(attributedString: .ds("По всем проблемам и предложениям пишите разработчику ", font: DS.Font.text(12), color: DS.Color.faint, lineHeight: 18, alignment: .center))
+        text.append(.ds("@tsep1lov", font: DS.Font.text(12, .semibold), color: DS.Color.accent, lineHeight: 18, alignment: .center))
+        text.append(.ds("\nМоя Академия " + (version.isEmpty ? "" : version + " ") + "· Академия ИМСИТ", font: DS.Font.text(12), color: DS.Color.faint, lineHeight: 18, alignment: .center))
+        footerLabel.attributedText = text
+        stack.setCustomSpacing(20, after: themes)
+        stack.addArrangedSubview(footerLabel)
+    }
+
+    private func addTitle(_ title: String) {
+        let caption = dsSectionTitle(title)
+        if let last = stack.arrangedSubviews.last { stack.setCustomSpacing(24, after: last) }
+        stack.addArrangedSubview(caption)
+        stack.setCustomSpacing(8, after: caption)
+    }
+
+    private func addSection(_ title: String, rows: [DSListRow]) {
+        addTitle(title)
+        stack.addArrangedSubview(DSListGroup(rows: rows))
+    }
+
+    private func accessoryRow(symbol: String, title: String, subtitle: String? = nil, accessory: UIView) -> DSListRow {
+        let row = DSListRow(symbol: symbol, title: title, subtitle: subtitle)
+        row.setAccessory(accessory)
+        return row
+    }
+
+    private func refreshProfileCard() {
+        profileCard.subviews.forEach { $0.removeFromSuperview() }
+        let defaults = UserDefaults.standard
+        let isTeacher = defaults.bool(forKey: "isTeacherMode")
+        let name = isTeacher ? (defaults.string(forKey: "selectedTeacherURL") ?? "") : (defaults.string(forKey: "selectedGroupURL") ?? "")
+        let sub: String
+        if isTeacher {
+            sub = "Преподаватель"
+        } else {
+            sub = [defaults.string(forKey: "selectedGroupLevel"), defaults.string(forKey: "selectedCourse")]
+                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
+        }
+
+        let card = CardView(radius: DS.Radius.hero, shadow: .sm)
+        let avatar = UIImageView(image: UIImage(named: isTeacher ? "IlloTeacher" : "IlloWelcome"))
+        avatar.contentMode = .scaleAspectFill
+        avatar.backgroundColor = DS.Color.accentSoft
+        avatar.layer.cornerRadius = 28
+        avatar.clipsToBounds = true
+        avatar.fixSize(width: 56, height: 56)
+        let eyebrow = UILabel.eyebrow("Моё расписание", size: 9.5)
+        let title = UILabel.ds(name.isEmpty ? (isTeacher ? "Преподаватель не выбран" : "Группа не выбрана") : name, font: DS.Font.display(18, .heavy), kern: -0.45, lines: 2)
+        var texts: [UIView] = [eyebrow, title]
+        if !sub.isEmpty { texts.append(UILabel.ds(sub, font: DS.Font.text(12.5), color: DS.Color.soft, lines: 2)) }
+        let col = UIStackView.ds(.vertical, spacing: 2, views: texts)
+        col.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        var rowViews: [UIView] = [avatar, col]
+        let locked = UserDefaults.standard.bool(forKey: "removeGroupSelection") && !isTeacher && !name.isEmpty
+        if onOpenSelection != nil && !locked {
+            let change = DSButton(name.isEmpty ? "Выбрать" : "Сменить", style: .outlineAccent, height: 32, fontSize: 12.5)
+            change.setContentHuggingPriority(.required, for: .horizontal)
+            change.setContentCompressionResistancePriority(.required, for: .horizontal)
+            change.onTap = { [weak self] in self?.onOpenSelection?() }
+            rowViews.append(change)
+        }
+        let row = UIStackView.ds(.horizontal, spacing: 14, alignment: .center, views: rowViews)
+        card.addSubview(row)
+        row.pinEdges(to: card, insets: UIEdgeInsets(top: 14, left: 16, bottom: 14, right: 16))
+        profileCard.addSubview(card)
+        card.pinEdges(to: profileCard)
+    }
+
+    @objc private func selectionDidChange() {
+        DispatchQueue.main.async {
+            self.refreshProfileCard()
+            self.modeSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isTeacherMode") ? 1 : 0
+            self.changeWeekSegmentedControl.selectedIndex = UserDefaults.standard.bool(forKey: "isOddWeek") ? 0 : 1
+        }
+    }
+
+    // MARK: - Неделя
 
     @objc func changeWeek() {
         // Если синхронизация включена — запрещаем ручную смену
         if UserDefaults.standard.bool(forKey: "syncWeekEnabled") {
             // Возвращаем выбранный индекс к текущему значению
             let isOdd = UserDefaults.standard.bool(forKey: "isOddWeek")
-            changeWeekSegmentedControl.selectedSegmentIndex = isOdd ? 0 : 1
+            changeWeekSegmentedControl.selectedIndex = isOdd ? 0 : 1
             return
         }
         // Переключаем неделю
         let currentWeek = UserDefaults.standard.bool(forKey: "isOddWeek")
         let newWeek = !currentWeek
         UserDefaults.standard.set(newWeek, forKey: "isOddWeek")
-        
+
         // Трекинг события
         if newWeek {
             MRMyTracker.trackEvent(name: "Переключить расписание на первую неделю")
@@ -696,28 +321,35 @@ class SettingsViewController: UIViewController {
         }
 
         // Обновляем состояние сегментного контрола
-        changeWeekSegmentedControl.selectedSegmentIndex = newWeek ? 0 : 1
+        changeWeekSegmentedControl.selectedIndex = newWeek ? 0 : 1
 
         // Отправляем нотификацию для обновления расписания
         NotificationCenter.default.post(name: Notification.Name("reloadSchedule"), object: nil)
     }
 
-    @objc func modeChanged(_ sender: UISegmentedControl) {
-        let isTeacherMode = sender.selectedSegmentIndex == 1
+    // MARK: - Режим
+
+    @objc func modeChanged(_ sender: DSSegmentedControl) {
+        Self.applyMode(isTeacher: sender.selectedIndex == 1)
+    }
+
+    /// Смена режима «Студент / Преподаватель» — из настроек и с экрана выбора
+    static func applyMode(isTeacher isTeacherMode: Bool) {
+        guard UserDefaults.standard.bool(forKey: "isTeacherMode") != isTeacherMode else { return }
         UserDefaults.standard.set(isTeacherMode, forKey: "isTeacherMode")
-        
+
         // Трекинг события
         if isTeacherMode {
             MRMyTracker.trackEvent(name: "Включить режим преподавателя")
         } else {
             MRMyTracker.trackEvent(name: "Включить режим студента")
         }
-        
+
         // Удаляем уведомления при смене режима
         let notificationManager = NotificationManager.shared
         notificationManager.removeAllNotifications()
         print("🗑️ Уведомления удалены при смене режима на \(isTeacherMode ? "преподавателя" : "студента")")
-        
+
         // Отправляем нотификацию для обновления режима
         NotificationCenter.default.post(name: Notification.Name("modeChanged"), object: nil)
     }
@@ -726,7 +358,7 @@ class SettingsViewController: UIViewController {
         if sender == showFullScheduleSwitch {
             // Save the switch state to UserDefaults
             UserDefaults.standard.set(sender.isOn, forKey: "showFullSchedule")
-            
+
             // Трекинг события
             if sender.isOn {
                 MRMyTracker.trackEvent(name: "Включить расписание на неделю")
@@ -736,7 +368,7 @@ class SettingsViewController: UIViewController {
         } else if sender == removeGroupSelectionSwitch {
             // Save the switch state to UserDefaults
             UserDefaults.standard.set(sender.isOn, forKey: "removeGroupSelection")
-            
+
             // Трекинг события
             if sender.isOn {
                 MRMyTracker.trackEvent(name: "Выключить видимость навигации")
@@ -748,6 +380,7 @@ class SettingsViewController: UIViewController {
             if let mainVC = self.navigationController?.viewControllers.first as? MainViewController {
                 mainVC.updateTabBarAccess(isGroupSelectionRemoved: sender.isOn)
             }
+            refreshProfileCard()
         }
     }
 
@@ -755,7 +388,7 @@ class SettingsViewController: UIViewController {
         MRMyTracker.trackEvent(name: "Выйти из экрана настроек")
         self.navigationController?.popViewController(animated: true)
     }
-    
+
     @objc private func showFeedback() {
         MRMyTracker.trackEvent(name: "Открыть опрос из настроек")
         SurveyManager.shared.openFromSettings(from: self)
@@ -764,48 +397,52 @@ class SettingsViewController: UIViewController {
     @objc private func showAbout() {
         MRMyTracker.trackEvent(name: "Открыть вкладку о приложении")
         let vc = AboutViewController()
+        if let nav = navigationController {
+            nav.pushViewController(vc, animated: true)
+        } else {
+            present(vc, animated: true)
+        }
+    }
+
+    private func showWidgets() {
+        let vc = WidgetInfoViewController()
+        vc.modalPresentationStyle = .overFullScreen
+        vc.modalTransitionStyle = .crossDissolve
         present(vc, animated: true)
     }
-    
-    private func updateNotificationTimeLabel() {
-        let minutes = Int(notificationTimeSlider.value)
-        notificationTimeValueLabel.text = "\(minutes) \(getMinutesText(minutes))"
+
+    private func openTelegram() {
+        guard let url = URL(string: "https://t.me/+oIslJtlz52cxYzZi") else { return }
+        UIApplication.shared.open(url, options: [:], completionHandler: nil)
     }
-    
-    private func updateNotificationTimeVisibility() {
+
+    // MARK: - Уведомления
+
+    private func updateNotificationTimeVisibility(animated: Bool = true) {
         let isEnabled = notificationsSwitch.isOn
-        notificationTimeSlider.isEnabled = isEnabled
-        notificationTimeValueLabel.alpha = isEnabled ? 1.0 : 0.5
-
-        // Анимированно показываем/скрываем блок дополнительных настроек,
-        // чтобы не было пустого пространства
-        let targetHeight: CGFloat = isEnabled ? 60 : 0
-        notificationTimeHeightConstraint?.constant = targetHeight
-
-        // Переключаем вертикальный констрейнт для карточки темы,
-        // чтобы отступ между "Уведомления" и "Тема" всегда был как у остальных блоков
-        if isEnabled {
-            themeTopToNotificationsMainConstraint?.isActive = false
-            themeTopToNotificationTimeConstraint?.isActive = true
-        } else {
-            themeTopToNotificationTimeConstraint?.isActive = false
-            themeTopToNotificationsMainConstraint?.isActive = true
+        // Строка «Напоминать за» видна только при включённых уведомлениях
+        let changes = {
+            self.notificationTimeRow.isHidden = !isEnabled
+            self.notificationTimeRow.alpha = isEnabled ? 1 : 0
         }
-
-        UIView.animate(withDuration: 0.25) {
-            self.view.layoutIfNeeded()
-            self.customCardView6.alpha = isEnabled ? 1.0 : 0.0
+        if animated {
+            UIView.animate(withDuration: 0.25) {
+                changes()
+                self.view.layoutIfNeeded()
+            }
+        } else {
+            changes()
         }
     }
-    
+
     private func getMinutesText(_ minutes: Int) -> String {
         let lastDigit = minutes % 10
         let lastTwoDigits = minutes % 100
-        
+
         if lastTwoDigits >= 11 && lastTwoDigits <= 19 {
             return "минут"
         }
-        
+
         switch lastDigit {
         case 1:
             return "минута"
@@ -815,18 +452,18 @@ class SettingsViewController: UIViewController {
             return "минут"
         }
     }
-    
+
     @objc func notificationsSwitchChanged(_ sender: UISwitch) {
         let notificationManager = NotificationManager.shared
         notificationManager.isNotificationsEnabled = sender.isOn
-        
+
         // Трекинг события
         if sender.isOn {
             MRMyTracker.trackEvent(name: "Включить уведомления расписания")
         } else {
             MRMyTracker.trackEvent(name: "Выключить уведомления расписания")
         }
-        
+
         if sender.isOn {
             // Запрашиваем разрешение на уведомления
             notificationManager.requestNotificationPermission { granted in
@@ -850,36 +487,33 @@ class SettingsViewController: UIViewController {
             updateNotificationTimeVisibility()
         }
     }
-    
-    @objc func notificationTimeSliderChanged(_ sender: UISlider) {
-        let minutes = Int(sender.value)
+
+    private func notificationTimeChanged(_ minutes: Int) {
         let notificationManager = NotificationManager.shared
         notificationManager.notificationTimeMinutes = minutes
-        
-        updateNotificationTimeLabel()
-        
+
         // Перепланируем уведомления с новым временем
         rescheduleNotifications()
     }
-    
+
     private func rescheduleNotifications() {
         let notificationManager = NotificationManager.shared
-        
+
         // Проверяем режим: уведомления только для студентов
         let isTeacherMode = UserDefaults.standard.bool(forKey: "isTeacherMode")
         if isTeacherMode {
             print("ℹ️ Режим преподавателя: уведомления не планируются")
             return
         }
-        
+
         // Проверяем, есть ли сохраненное расписание
         let hasSchedule = UserDefaults.standard.string(forKey: "selectedGroupURL") != nil
-        
+
         guard hasSchedule else {
             print("ℹ️ Нет сохраненного расписания для перепланирования уведомлений")
             return
         }
-        
+
         // Пытаемся найти сохраненное расписание в UserDefaults
         if let scheduleData = UserDefaults.standard.data(forKey: "savedSchedule"),
            let schedule = try? JSONDecoder().decode([DaySchedule].self, from: scheduleData) {
@@ -896,14 +530,14 @@ class SettingsViewController: UIViewController {
     // MARK: - Sync Week
     @objc private func syncWeekSwitchChanged(_ sender: UISwitch) {
         UserDefaults.standard.set(sender.isOn, forKey: "syncWeekEnabled")
-        
+
         // Трекинг события
         if sender.isOn {
             MRMyTracker.trackEvent(name: "Включить синхронизацию недели")
         } else {
             MRMyTracker.trackEvent(name: "Выключить синхронизацию недели")
         }
-        
+
         applySyncWeekUIState(isEnabled: sender.isOn)
         if sender.isOn {
             syncWeekWithServer(applyOnlyUI: false)
@@ -912,147 +546,20 @@ class SettingsViewController: UIViewController {
 
     private func applySyncWeekUIState(isEnabled: Bool) {
         changeWeekSegmentedControl.isEnabled = !isEnabled
-        changeWeekLabel.textColor = isEnabled ? .secondaryLabel : .label
+        changeWeekRow?.alpha = isEnabled ? 0.45 : 1
     }
 
     // MARK: - Theme
-    @objc private func themeChanged(_ sender: UISegmentedControl) {
-        switch sender.selectedSegmentIndex {
-        case AppTheme.light.rawValue:
-            ThemeManager.current = .light
-        case AppTheme.dark.rawValue:
-            ThemeManager.current = .dark
-        case AppTheme.system.rawValue:
-            ThemeManager.current = .system
-        default:
-            ThemeManager.current = .system
-        }
-        // Обновляем иконку Telegram в footerLabel при изменении темы
-        updateFooterLabel(footerLabel)
-        // Обновляем цвета навигации немедленно и с задержкой для надежности
-        updateNavigationBarColors()
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
-            self.updateNavigationBarColors()
-        }
-    }
-    
-    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
-        super.traitCollectionDidChange(previousTraitCollection)
-        // Обновляем иконку Telegram при смене системной темы (если выбрана системная тема)
-        if ThemeManager.current == .system,
-           traitCollection.userInterfaceStyle != previousTraitCollection?.userInterfaceStyle {
-            updateFooterLabel(footerLabel)
-            // Обновляем цвета навигации при смене системной темы
-            updateNavigationBarColors()
-        }
-    }
-    
-    override func viewWillAppear(_ animated: Bool) {
-        super.viewWillAppear(animated)
-        // Актуализируем доступность "Показать всю неделю" при каждом открытии настроек.
-        applyCorrespondenceFullWeekAvailability()
 
-        // Отключаем все анимации перед появлением view
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        
-        // Обновляем цвета навигации при каждом появлении экрана
-        updateNavigationBarColors()
-
-        // Гарантируем правильное состояние блока времени уведомлений ДО фикса альфы/лейаута
-        updateNotificationTimeVisibility()
-        
-        // Убеждаемся, что все элементы находятся на своих местах без transform
-        let allViews: [UIView] = [
-            customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
-        ]
-        for cardView in allViews {
-            cardView.transform = .identity
-            if cardView == customCardView6 {
-                // Не даём блоку "Время уведомления" появляться при выключенных уведомлениях
-                cardView.alpha = notificationsSwitch.isOn ? 1.0 : 0.0
-            } else {
-                cardView.alpha = 1.0
-            }
-        }
-        
-        // Принудительно обновляем layout, чтобы все элементы были на своих местах
-        view.setNeedsLayout()
-        view.layoutIfNeeded()
-        scrollView.setNeedsLayout()
-        scrollView.layoutIfNeeded()
-        contentView.setNeedsLayout()
-        contentView.layoutIfNeeded()
-        
-        CATransaction.commit()
+    private func themeTapped(_ theme: AppTheme) {
+        guard ThemeManager.current != theme else { return }
+        UISelectionFeedbackGenerator().selectionChanged()
+        ThemeManager.current = theme
+        refreshThemeCards()
     }
-    
-    override func viewDidAppear(_ animated: Bool) {
-        super.viewDidAppear(animated)
-        // Дополнительно обновляем layout после появления для гарантии
-        CATransaction.begin()
-        CATransaction.setDisableActions(true)
-        
-        // Убеждаемся, что все элементы находятся на своих местах
-        let allViews: [UIView] = [
-            customCardView, customCardView2, customCardView3, customCardView4,
-            customCardView5, customCardView6, customCardView7, customCardView8, feedbackCardView
-        ]
-        for cardView in allViews {
-            cardView.transform = .identity
-        }
-        
-        view.layoutIfNeeded()
-        scrollView.layoutIfNeeded()
-        contentView.layoutIfNeeded()
-        CATransaction.commit()
 
-        #if DEBUG
-        // Демонстрация опросов: прокрутить к «Оставить отзыв»
-        if SurveysDebug.openSettings {
-            let rect = feedbackCardView.convert(feedbackCardView.bounds, to: scrollView).insetBy(dx: 0, dy: -20)
-            scrollView.scrollRectToVisible(rect, animated: true)
-        }
-        #endif
-    }
-    
-    private func updateNavigationBarColors() {
-        // Определяем цвет на основе текущей темы из ThemeManager
-        // Используем resolvedColor для правильного разрешения динамического цвета
-        let textColor: UIColor
-        switch ThemeManager.current {
-        case .light:
-            // Для светлой темы используем черный цвет
-            textColor = UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: .light))
-        case .dark:
-            // Для темной темы используем белый цвет
-            textColor = UIColor.label.resolvedColor(with: UITraitCollection(userInterfaceStyle: .dark))
-        case .system:
-            // Для системной темы используем текущий traitCollection
-            textColor = UIColor.label.resolvedColor(with: traitCollection)
-        }
-        
-        // Принудительно обновляем цвет заголовка навигации
-        navigationController?.navigationBar.titleTextAttributes = [
-            NSAttributedString.Key.foregroundColor: textColor
-        ]
-        
-        // Обновляем цвет кнопки "Назад", пересоздавая её для гарантии обновления
-        let backButton = UIBarButtonItem(title: "Назад", style: .plain, target: self, action: #selector(backButtonTapped))
-        backButton.tintColor = textColor
-        navigationItem.leftBarButtonItem = backButton
-        
-        // Принудительно обновляем навигационную панель
-        if let navBar = navigationController?.navigationBar {
-            navBar.setNeedsLayout()
-            navBar.layoutIfNeeded()
-            navBar.setNeedsDisplay()
-        }
-        
-        // Также обновляем сам view для гарантии
-        view.setNeedsLayout()
-        view.layoutIfNeeded()
+    private func refreshThemeCards() {
+        themeCards.forEach { $0.isOn = $0.theme == ThemeManager.current }
     }
 
     private func applyCorrespondenceFullWeekAvailability() {
@@ -1065,25 +572,21 @@ class SettingsViewController: UIViewController {
         if isCorrespondence {
             showFullScheduleSwitch.setOn(false, animated: false)
             showFullScheduleSwitch.isEnabled = false
-            showFullScheduleSwitch.alpha = 0.5
-            titleLabel.textColor = .secondaryLabel
+            showFullScheduleRow?.alpha = 0.45
             UserDefaults.standard.set(false, forKey: "showFullSchedule")
 
             // Для заочки смена недели тоже неактуальна (расписание по датам/сессии)
             changeWeekSegmentedControl.isEnabled = false
-            changeWeekSegmentedControl.alpha = 0.5
-            changeWeekLabel.textColor = .secondaryLabel
+            changeWeekRow?.alpha = 0.45
         } else {
             showFullScheduleSwitch.isEnabled = true
-            showFullScheduleSwitch.alpha = 1.0
-            titleLabel.textColor = .label
+            showFullScheduleRow?.alpha = 1
             showFullScheduleSwitch.isOn = UserDefaults.standard.bool(forKey: "showFullSchedule")
 
             // Возвращаем доступность смены недели только если синхронизация недели выключена
             let syncEnabled = UserDefaults.standard.bool(forKey: "syncWeekEnabled")
             changeWeekSegmentedControl.isEnabled = !syncEnabled
-            changeWeekSegmentedControl.alpha = (!syncEnabled) ? 1.0 : 0.5
-            changeWeekLabel.textColor = syncEnabled ? .secondaryLabel : .label
+            changeWeekRow?.alpha = syncEnabled ? 0.45 : 1
         }
     }
 
@@ -1094,7 +597,7 @@ class SettingsViewController: UIViewController {
                 let isOdd = (week == 1)
                 UserDefaults.standard.set(isOdd, forKey: "isOddWeek")
                 DispatchQueue.main.async {
-                    self.changeWeekSegmentedControl.selectedSegmentIndex = isOdd ? 0 : 1
+                    self.changeWeekSegmentedControl.selectedIndex = isOdd ? 0 : 1
                 }
                 if !applyOnlyUI {
                     NotificationCenter.default.post(name: Notification.Name("reloadSchedule"), object: nil)
@@ -1106,11 +609,179 @@ class SettingsViewController: UIViewController {
     }
 }
 
+// MARK: - Степпер минут
 
+/// «− 10 мин +» — время напоминания перед парой (1…30 мин)
+private final class MinutesStepper: UIView {
+    var onChange: ((Int) -> Void)?
+    var minutes: Int = 5 { didSet { refresh() } }
+    private let label = UILabel()
+    private let steps = [1, 5, 10, 15, 20, 25, 30]
 
+    override init(frame: CGRect) {
+        super.init(frame: frame)
+        translatesAutoresizingMaskIntoConstraints = false
+        let card = CardView(radius: 15, shadow: .none)
+        card.borderColor = DS.Color.borderStrong
+        addSubview(card)
+        card.pinEdges(to: self)
+        let minus = makeButton("−") { [weak self] in self?.step(-1) }
+        let plus = makeButton("+") { [weak self] in self?.step(1) }
+        minus.accessibilityLabel = "Меньше"
+        plus.accessibilityLabel = "Больше"
+        label.textAlignment = .center
+        label.widthAnchor.constraint(greaterThanOrEqualToConstant: 54).isActive = true
+        let row = UIStackView.ds(.horizontal, spacing: 0, alignment: .center, views: [minus, label, plus])
+        addSubview(row)
+        row.pinEdges(to: self)
+        heightAnchor.constraint(equalToConstant: 30).isActive = true
+        refresh()
+    }
 
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
 
+    private func makeButton(_ title: String, action: @escaping () -> Void) -> DSTapControl {
+        let button = DSTapControl()
+        button.fixSize(width: 34, height: 30)
+        let l = UILabel.ds(title, font: DS.Font.text(18), color: DS.Color.muted, alignment: .center)
+        button.addSubview(l)
+        l.pinEdges(to: button)
+        button.onTap = action
+        return button
+    }
 
+    private func step(_ direction: Int) {
+        let next: Int?
+        if direction > 0 {
+            next = steps.first { $0 > minutes }
+        } else {
+            next = steps.last { $0 < minutes }
+        }
+        guard let value = next else { return }
+        minutes = value
+        UISelectionFeedbackGenerator().selectionChanged()
+        onChange?(value)
+    }
 
+    private func refresh() {
+        label.setDS("\(minutes) мин", font: DS.Font.mono(12.5, .semibold), alignment: .center)
+        accessibilityValue = "\(minutes) мин"
+    }
+}
 
+// MARK: - Карточка темы
 
+private final class ThemeCard: DSTapControl {
+    let theme: AppTheme
+    private let card = CardView(radius: 16, shadow: .xs)
+    private let radio = UIView()
+    private let preview = UIView()
+    private let previewGradient = CAGradientLayer()
+    private let split = UIView()
+
+    var isOn = false { didSet { refresh() } }
+
+    init(theme: AppTheme) {
+        self.theme = theme
+        super.init(frame: .zero)
+        translatesAutoresizingMaskIntoConstraints = false
+        card.isUserInteractionEnabled = false
+        addSubview(card)
+        card.pinEdges(to: self)
+
+        let light = UIColor(rgb: 0xF8FAFC), dark = UIColor(rgb: 0x0A0F1E)
+        preview.layer.cornerRadius = 11
+        preview.clipsToBounds = true
+        preview.layer.borderWidth = 1
+        preview.backgroundColor = theme == .dark ? dark : light
+        preview.fixSize(height: 78)
+        if theme == .system {
+            split.backgroundColor = dark
+            split.translatesAutoresizingMaskIntoConstraints = false
+            preview.addSubview(split)
+            NSLayoutConstraint.activate([
+                split.topAnchor.constraint(equalTo: preview.topAnchor),
+                split.bottomAnchor.constraint(equalTo: preview.bottomAnchor),
+                split.trailingAnchor.constraint(equalTo: preview.trailingAnchor),
+                split.widthAnchor.constraint(equalTo: preview.widthAnchor, multiplier: 0.5)
+            ])
+        }
+        let bar = UIView()
+        bar.layer.cornerRadius = 7
+        bar.clipsToBounds = true
+        previewGradient.colors = [DS.Color.brand.cgColor, DS.Color.brandSky.cgColor]
+        previewGradient.startPoint = CGPoint(x: 0, y: 0)
+        previewGradient.endPoint = CGPoint(x: 1, y: 1)
+        bar.layer.addSublayer(previewGradient)
+        let cardColor: UIColor = theme == .light ? .white : (theme == .dark ? UIColor(rgb: 0x131A2E) : UIColor(rgb: 0x94A3B8, alpha: 0.45))
+        let line1 = UIView(), line2 = UIView()
+        [line1, line2].forEach { $0.backgroundColor = cardColor; $0.layer.cornerRadius = 4 }
+        [bar, line1, line2].forEach { $0.translatesAutoresizingMaskIntoConstraints = false; preview.addSubview($0) }
+        NSLayoutConstraint.activate([
+            bar.topAnchor.constraint(equalTo: preview.topAnchor, constant: 9),
+            bar.leadingAnchor.constraint(equalTo: preview.leadingAnchor, constant: 8),
+            bar.trailingAnchor.constraint(equalTo: preview.trailingAnchor, constant: -8),
+            bar.heightAnchor.constraint(equalToConstant: 22),
+            line1.topAnchor.constraint(equalTo: preview.topAnchor, constant: 37),
+            line1.leadingAnchor.constraint(equalTo: preview.leadingAnchor, constant: 8),
+            line1.trailingAnchor.constraint(equalTo: preview.trailingAnchor, constant: -22),
+            line1.heightAnchor.constraint(equalToConstant: 13),
+            line2.topAnchor.constraint(equalTo: preview.topAnchor, constant: 55),
+            line2.leadingAnchor.constraint(equalTo: preview.leadingAnchor, constant: 8),
+            line2.trailingAnchor.constraint(equalTo: preview.trailingAnchor, constant: -34),
+            line2.heightAnchor.constraint(equalToConstant: 13)
+        ])
+        self.bar = bar
+
+        let title: String
+        switch theme {
+        case .light: title = "Светлая"
+        case .dark: title = "Тёмная"
+        case .system: title = "Авто"
+        }
+        let label = UILabel.ds(title, font: DS.Font.text(13, .semibold))
+        radio.layer.cornerRadius = 9
+        radio.fixSize(width: 18, height: 18)
+        let bottom = UIStackView.ds(.horizontal, spacing: 4, alignment: .center, views: [label, UIView(), radio])
+        let bottomWrap = UIView()
+        bottomWrap.addSubview(bottom)
+        bottom.pinEdges(to: bottomWrap, insets: UIEdgeInsets(top: 0, left: 4, bottom: 0, right: 4))
+        let col = UIStackView.ds(.vertical, spacing: 8, views: [preview, bottomWrap])
+        col.isUserInteractionEnabled = false
+        addSubview(col)
+        col.pinEdges(to: self, insets: UIEdgeInsets(top: 6, left: 6, bottom: 10, right: 6))
+        accessibilityLabel = "Тема: " + title
+        refresh()
+    }
+
+    private weak var bar: UIView?
+
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        previewGradient.frame = bar?.bounds ?? .zero
+    }
+
+    override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
+        super.traitCollectionDidChange(previousTraitCollection)
+        refresh()
+    }
+
+    private func refresh() {
+        card.borderColor = isOn ? DS.Color.brand : DS.Color.border
+        card.borderWidth = isOn ? 2 : 1
+        if isOn {
+            card.layer.shadowColor = DS.Color.brand.cgColor
+            card.layer.shadowOpacity = 0.14
+            card.layer.shadowRadius = 3
+            card.layer.shadowOffset = .zero
+        } else {
+            card.shadow = .xs
+        }
+        radio.layer.borderWidth = isOn ? 5 : 1.5
+        radio.layer.borderColor = (isOn ? DS.Color.brand : DS.Color.borderStrong).resolvedColor(with: traitCollection).cgColor
+        preview.layer.borderColor = DS.Color.border.resolvedColor(with: traitCollection).cgColor
+        accessibilityTraits = isOn ? [.button, .selected] : .button
+    }
+}

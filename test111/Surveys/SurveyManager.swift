@@ -120,7 +120,7 @@ final class SurveyManager {
             sheet.detents = [.medium(), .large()]
             sheet.prefersGrabberVisible = true
             sheet.prefersScrollingExpandsWhenScrolledToEdge = true
-            sheet.preferredCornerRadius = 20
+            sheet.preferredCornerRadius = DS.Radius.sheet
         }
         nav.presentationController?.delegate = vc
         top.present(nav, animated: true)

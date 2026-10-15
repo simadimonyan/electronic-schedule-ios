@@ -26,6 +26,20 @@
 			</array>
 		</dict>
 	</dict>
+	<key>UIAppFonts</key>
+	<array>
+		<string>PlusJakartaSans-SemiBold.ttf</string>
+		<string>PlusJakartaSans-Bold.ttf</string>
+		<string>PlusJakartaSans-ExtraBold.ttf</string>
+		<string>Inter-Regular.ttf</string>
+		<string>Inter-Medium.ttf</string>
+		<string>Inter-SemiBold.ttf</string>
+		<string>Inter-Bold.ttf</string>
+		<string>JetBrainsMono-Regular.ttf</string>
+		<string>JetBrainsMono-Medium.ttf</string>
+		<string>JetBrainsMono-SemiBold.ttf</string>
+		<string>JetBrainsMono-Bold.ttf</string>
+	</array>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>fetch</string>

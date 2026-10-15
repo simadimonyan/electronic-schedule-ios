@@ -10,39 +10,23 @@ import SwiftSoup
 import YandexMobileAds
 import MyTrackerSDK
 
-class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResultsUpdating, UISearchBarDelegate {
-    private var tabBar: UITabBar!
-    private var indicatorView: UIView!
-    private var currentItemIndex: Int = 0
+class TeacherViewController: UIViewController {
     weak var delegate: TeacherSelectionDelegate?
 
-    private let departmentCard = CustomSelectionCardView(title: "Кафедра", iconName: "building.2")
-    private let teacherCard = CustomSelectionCardView(title: "Преподаватель", iconName: "person.circle")
-    private let searchCard = CustomSelectionCardView(title: "Поиск по фамилии", iconName: "magnifyingglass")
+    /// Экран выбора в новом дизайне
+    private let screen = SelectionScreenView(isTeacher: true, placeholder: "Фамилия преподавателя")
+    var onBack: (() -> Void)?
+    var canGoBack = true { didSet { screen.canGoBack = canGoBack } }
 
     private var teachers: [Teacher] = []
     private var allTeachers: [Teacher] = []
     private var selectedDepartment: String?
     var selectedTeacher: String?
-    
-    // Поиск
-    private let searchController = UISearchController(searchResultsController: nil)
-    private var filteredTeachers: [Teacher] = []
-
-    let button: UIButton = createButton(title: " Выбрать", imageName: "icons8")
+    private var isLoadingTeachers = true
 
     // Реклама: адаптивный inline-баннер
     private var yandexAdView: AdView?
     private var lastAdWidth: CGFloat = 0
-
-    private let titleLabel: UILabel = {
-            let label = UILabel()
-            label.text = "Выбор преподавателя"
-            label.textAlignment = .center
-            label.font = UIFont.systemFont(ofSize: 24, weight: .bold)
-            label.translatesAutoresizingMaskIntoConstraints = false
-            return label
-        }()
 
     private var teachersByDepartment: [String: [String]] = [:]
     private let teacherParser = TeacherParser.shared
@@ -50,43 +34,20 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
     override func viewDidLoad() {
         super.viewDidLoad()
         self.navigationItem.title = nil
+        view.backgroundColor = DS.Color.bg
 
-        view.addSubview(titleLabel)
-        NSLayoutConstraint.activate([
-            titleLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20),
-            titleLabel.centerXAnchor.constraint(equalTo: view.centerXAnchor)
-        ])
-
-        view.backgroundColor = .systemGroupedBackground
-        
-        setupSearchController()
-        setupUI()
-        view.addSubview(button)
-
-        let buttonWidth: CGFloat = UIScreen.main.bounds.width * 0.9
-        let buttonHeight: CGFloat = 65.0
-        let buttonTopOffset: CGFloat = UIScreen.main.bounds.height * 0.35
-
-        NSLayoutConstraint.activate([
-            button.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            button.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.bottomAnchor, constant: -buttonTopOffset),
-            button.heightAnchor.constraint(equalToConstant: buttonHeight),
-            button.widthAnchor.constraint(equalToConstant: buttonWidth)
-        ])
-
-        button.addTarget(self, action: #selector(buttonTouchDown), for: [.touchDown, .touchDragEnter])
-        button.addTarget(self, action: #selector(buttonTouchUp), for: [.touchUpInside, .touchUpOutside, .touchDragExit, .touchCancel])
-
-        button.addTarget(self, action: #selector(saveSelection), for: .touchUpInside)
+        screen.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(screen)
+        screen.pinEdges(to: view)
+        screen.onBack = { [weak self] in self?.onBack?() }
+        screen.onQuery = { [weak self] _ in self?.renderList() }
+        screen.onModeChange = { isTeacher in SettingsViewController.applyMode(isTeacher: isTeacher) }
+        screen.onSelectRow = { [weak self] row in self?.teacherTapped(row.id) }
         
         loadSavedSelection()
-        updateButtonState()
 
         loadTeachersFromJSON()
         loadAllTeachers() // Загружаем всех преподавателей для поиска
-        
-        // Инициализируем карточку поиска
-        searchCard.updateSubtitle("Нажмите для поиска")
         
         // Тестируем парсер (можно убрать в продакшене)
         #if DEBUG
@@ -94,7 +55,7 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
         TeacherParserConsoleTest.runTest()
         #endif
 
-        // Настраиваем адаптивный баннер под кнопкой, если разрешена реклама
+        // Настраиваем адаптивный баннер под списком, если разрешена реклама
         if AdManager.shared.shouldShowAds() {
             setupAdaptiveAdBanner()
         }
@@ -106,6 +67,12 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
             name: Notification.Name("themeChanged"),
             object: nil
         )
+        renderList()
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        screen.setMode(isTeacher: true)
     }
     
     override func viewDidAppear(_ animated: Bool) {
@@ -123,80 +90,50 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
             refreshAdBannerIfNeeded()
         }
     }
-    
-    private func setupSearchController() {
-        searchController.searchResultsUpdater = self
-        searchController.obscuresBackgroundDuringPresentation = false
-        searchController.searchBar.placeholder = "Введите фамилию"
-        searchController.searchBar.delegate = self
-        
-        // Делаем фон поиска системным (адаптивным)
-        searchController.searchBar.backgroundColor = .secondarySystemBackground
-        searchController.searchBar.barTintColor = .secondarySystemBackground
-        searchController.searchBar.tintColor = .systemBlue
-        
-        // Дополнительные настройки для лучшего отображения
-        searchController.searchBar.searchBarStyle = .default // Изменяем на default для полного фона
-        searchController.searchBar.isTranslucent = false
-        
-        // Убираем тень и границы
-        searchController.searchBar.layer.shadowOpacity = 0
-        searchController.searchBar.layer.borderWidth = 0
-        
-        // Дополнительные настройки для полного белого фона
-        if let searchBarTextField = searchController.searchBar.value(forKey: "searchField") as? UITextField {
-            searchBarTextField.backgroundColor = .secondarySystemBackground
+
+    // MARK: - Список преподавателей
+
+    private func renderList() {
+        let query = screen.query.trimmingCharacters(in: .whitespaces).lowercased()
+        let source = teachers.isEmpty ? allTeachers : teachers
+        let current = selectedTeacher ?? UserDefaults.standard.string(forKey: "selectedTeacher")
+        let filtered = source
+            .filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            .filter { query.isEmpty || $0.name.lowercased().contains(query) }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
+        // Группировка по первой букве фамилии
+        var byLetter: [String: [Teacher]] = [:]
+        for teacher in filtered {
+            let letter = teacher.name.first.map { String($0).uppercased() } ?? "#"
+            byLetter[letter, default: []].append(teacher)
+        }
+        let sections: [SelectionScreenView.Section] = byLetter.keys.sorted().map { letter in
+            .init(title: letter, count: nil, rows: byLetter[letter]!.map { teacher in
+                .init(id: teacher.name,
+                      title: teacher.name,
+                      subtitle: teacher.department == "Без кафедры" ? "" : teacher.department,
+                      badge: ScheduleTime.initials(teacher.name),
+                      isSelected: teacher.name == current)
+            })
+        }
+        if source.isEmpty && isLoadingTeachers {
+            screen.setSections([], emptyTitle: "Загружаем преподавателей…", emptyText: nil)
+        } else if source.isEmpty {
+            screen.setSections([], emptyTitle: "Список недоступен", emptyText: "Проверьте подключение к интернету")
+        } else {
+            screen.setSections(sections, emptyTitle: "Ничего не нашли", emptyText: "Попробуйте другую фамилию")
         }
     }
 
-    @objc func buttonTouchDown() {
-        if let darkerColor = button.backgroundColor?.darker(by: 10.0) {
-            UIView.animate(withDuration: 0.1) {
-                self.button.backgroundColor = darkerColor
-            }
-        }
-    }
-
-    @objc func buttonTouchUp() {
-        UIView.animate(withDuration: 0.1) {
-            self.button.backgroundColor = UIColor.systemBlue
-        }
-    }
-
-    private func setupUI() {
-        let stackView = UIStackView(arrangedSubviews: [searchCard, departmentCard, teacherCard])
-        stackView.axis = .vertical
-        stackView.spacing = 20
-        stackView.alignment = .fill
-        stackView.distribution = .fill
-        stackView.translatesAutoresizingMaskIntoConstraints = false
-        view.addSubview(stackView)
-
-        NSLayoutConstraint.activate([
-            stackView.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 16),
-            stackView.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            stackView.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 100)
-        ])
-
-        searchCard.onTap = { [weak self] in
-            guard let self = self else { return }
-            self.present(self.searchController, animated: true)
-        }
-
-        // Убираем возможность выбора кафедры - просто показываем "Все кафедры"
-        departmentCard.onTap = nil
-
-        teacherCard.onTap = { [weak self] in
-            guard let self = self, !self.teachers.isEmpty else { return }
-            self.showPicker(title: "Выберите преподавателя", items: self.teachers.map { $0.name }) { selected in
-                if let teacher = self.teachers.first(where: { $0.name == selected }) {
-                    print("Выбрано: \(self.selectedDepartment ?? "") -> \(teacher.name)")
-                    print("Ссылка на расписание: \(teacher.url)")
-                    self.teacherCard.updateSubtitle(teacher.name)
-                    self.didSelectTeacher(teacher.name)
-                }
-            }
-        }
+    private func teacherTapped(_ name: String) {
+        guard let teacher = (teachers + allTeachers).first(where: { $0.name == name }) else { return }
+        print("Выбрано: \(selectedDepartment ?? "") -> \(teacher.name)")
+        print("Ссылка на расписание: \(teacher.url)")
+        // Кафедра всегда остается "Все кафедры"
+        selectedDepartment = "Все кафедры"
+        didSelectTeacher(teacher.name)
+        renderList()
+        saveSelection()
     }
 
     private func updateTeachers() {
@@ -211,54 +148,27 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
                 
                 DispatchQueue.main.async {
                     self?.teachers = teachers
-                    if let selectedTeacher = self?.selectedTeacher,
-                       let teacher = self?.teachers.first(where: { $0.name == selectedTeacher }) {
-                        self?.teacherCard.updateSubtitle(teacher.name)
-                    } else {
-                        self?.teacherCard.updateSubtitle("Выберите преподавателя")
-                    }
+                    self?.isLoadingTeachers = false
+                    self?.renderList()
                 }
             case .failure(let error):
                 print("❌ Ошибка загрузки всех преподавателей: \(error.localizedDescription)")
                 DispatchQueue.main.async {
                     self?.teachers = []
-                    // При офлайне показываем ранее выбранного преподавателя, если он есть
-                    if let saved = self?.selectedTeacher, !saved.isEmpty {
-                        self?.teacherCard.updateSubtitle(saved)
-                    } else {
-                        self?.teacherCard.updateSubtitle("Не выбрано")
-                    }
+                    self?.isLoadingTeachers = false
+                    self?.renderList()
                 }
             }
         }
     }
 
-    private func showPicker(title: String, items: [String], onSelect: @escaping (String) -> Void) {
-        let alert = UIAlertController(title: title, message: nil, preferredStyle: .actionSheet)
-        items.forEach { item in
-            alert.addAction(UIAlertAction(title: item, style: .default) { _ in
-                onSelect(item)
-            })
-        }
-        alert.addAction(UIAlertAction(title: "Отмена", style: .cancel))
-        present(alert, animated: true)
-    }
-
-    private func updateButtonState() {
-        let allSelected = selectedDepartment != nil && selectedTeacher != nil
-        button.isEnabled = allSelected
-        button.backgroundColor = allSelected ? UIColor.systemBlue : UIColor.systemGray
-    }
-
     func didSelectDepartment(_ department: String) {
         selectedDepartment = department
-        updateButtonState()
     }
 
     func didSelectTeacher(_ teacher: String) {
         selectedTeacher = teacher
         MRMyTracker.trackEvent(name: "Выбрать преподавателя")
-        updateButtonState()
     }
 
     @objc func saveSelection() {
@@ -303,23 +213,7 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
         selectedTeacher = defaults.string(forKey: "selectedTeacher")
         print("Загружено: \(selectedDepartment ?? "Нет кафедры"), \(selectedTeacher ?? "Нет преподавателя")")
 
-        // Всегда показываем "Все кафедры" как серый текст
-        self.departmentCard.updateSubtitle("Все кафедры")
-
         updateTeachers()
-
-        // Показываем название преподавателя, если оно сохранено, даже если список преподавателей не загружен (без сети)
-        // Сначала пробуем selectedTeacher, затем selectedTeacherURL
-        let teacherName = selectedTeacher ?? UserDefaults.standard.string(forKey: "selectedTeacherURL")
-        if let teacherName = teacherName {
-            // Показываем название преподавателя, даже если список не загружен или преподаватель не найден в списке
-            // Это важно для работы без сети
-            self.teacherCard.updateSubtitle(teacherName)
-        } else {
-            self.teacherCard.updateSubtitle("Не выбрано")
-        }
-
-        updateButtonState()
     }
 
     func resizeAndTintImage(named imageName: String, size: CGSize, color: UIColor) -> UIImage? {
@@ -335,7 +229,6 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
     func simulateUserSelection(department: String?, teacher: String?) {
         selectedDepartment = department
         selectedTeacher = teacher
-        updateButtonState()
     }
 
     private func loadTeachersFromJSON() {
@@ -351,8 +244,6 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
                     self?.teachersByDepartment = ["Все кафедры": []]
                     print("✅ Данные о преподавателях успешно загружены с API")
                     
-                    // Всегда показываем "Все кафедры"
-                    self?.departmentCard.updateSubtitle("Все кафедры")
                 }
             case .failure(let error):
                 print("❌ Ошибка загрузки данных о преподавателях: \(error.localizedDescription)")
@@ -377,64 +268,6 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
         }
     }
 
-    func updateSearchResults(for searchController: UISearchController) {
-        guard let searchText = searchController.searchBar.text, !searchText.isEmpty else {
-            filteredTeachers = []
-            searchCard.updateSubtitle("Введите фамилию для поиска")
-            return
-        }
-        
-        filteredTeachers = allTeachers.filter { teacher in
-            teacher.name.lowercased().contains(searchText.lowercased())
-        }
-        
-        // Обновляем subtitle карточки поиска
-        if filteredTeachers.isEmpty {
-            searchCard.updateSubtitle("Ничего не найдено")
-        } else {
-            searchCard.updateSubtitle("Найдено: \(filteredTeachers.count) преподавателей")
-        }
-    }
-    
-    func searchBarSearchButtonClicked(_ searchBar: UISearchBar) {
-        searchController.dismiss(animated: true) {
-            self.showSearchResults()
-        }
-    }
-    
-    private func showSearchResults() {
-        guard !filteredTeachers.isEmpty else {
-            let alert = UIAlertController(title: "Результаты поиска", message: "Преподаватель не найден", preferredStyle: .alert)
-            alert.addAction(UIAlertAction(title: "OK", style: .default))
-            present(alert, animated: true)
-            return
-        }
-        
-        let teacherNames = filteredTeachers.map { $0.name }
-        showPicker(title: "Результаты поиска", items: teacherNames) { selected in
-            if let teacher = self.filteredTeachers.first(where: { $0.name == selected }) {
-                // Устанавливаем выбранного преподавателя
-                self.selectedTeacher = teacher.name
-                self.teacherCard.updateSubtitle(teacher.name)
-                self.searchCard.updateSubtitle("Найден: \(teacher.name)")
-                
-                // Кафедра всегда остается "Все кафедры"
-                self.selectedDepartment = "Все кафедры"
-                self.departmentCard.updateSubtitle("Все кафедры")
-                
-                // Сохраняем выбор
-                UserDefaults.standard.set(teacher.name, forKey: "selectedTeacher")
-                UserDefaults.standard.set(teacher.url, forKey: "selectedTeacherURL")
-                
-                // Обновляем состояние кнопки
-                self.updateButtonState()
-                
-                print("✅ Выбран преподаватель через поиск: \(teacher.name) - \(teacher.department)")
-                print("🔗 URL расписания: \(teacher.url)")
-            }
-        }
-    }
-    
     private func loadAllTeachers() {
         ScheduleRepository.shared.searchTeachers(department: nil) { [weak self] result in
             switch result {
@@ -443,6 +276,7 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
                     let realTeachers = teachers.map { Teacher(name: $0.label, department: $0.department ?? "", url: $0.label) }
                     self?.allTeachers = realTeachers
                     print("📚 Загружено для поиска: \(realTeachers.count) преподавателей")
+                    self?.renderList()
                 }
             case .failure(let error):
                 print("Ошибка загрузки всех преподавателей: \(error)")
@@ -502,31 +336,29 @@ class TeacherViewController: UIViewController, UITabBarDelegate, UISearchResults
         guard yandexAdView == nil else { return }
 
         // Делаем баннер шире: оставляем небольшие отступы по краям
-        let availableWidth = view.bounds.width - 32
+        let availableWidth = (view.bounds.width > 0 ? view.bounds.width : UIScreen.main.bounds.width) - 32
         let adSize = BannerAdSize.inlineSize(withWidth: availableWidth, maxHeight: 100)
         let adView = AdView(adUnitID: "R-M-14326663-2", adSize: adSize)
         adView.delegate = self
         adView.translatesAutoresizingMaskIntoConstraints = false
         adView.backgroundColor = .clear
-        view.addSubview(adView)
+        adView.widthAnchor.constraint(equalToConstant: availableWidth).isActive = true
 
-        NSLayoutConstraint.activate([
-            adView.topAnchor.constraint(equalTo: button.bottomAnchor, constant: 16),
-            adView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            adView.widthAnchor.constraint(equalToConstant: availableWidth)
-        ])
-
+        // Баннер — под списком преподавателей
+        screen.adView = adView
         self.yandexAdView = adView
         self.lastAdWidth = availableWidth
         loadAdWithTheme(adView: adView)
+        renderList()
     }
 
     override func viewDidLayoutSubviews() {
         super.viewDidLayoutSubviews()
         let targetWidth = view.bounds.width - 32
-        if abs(targetWidth - lastAdWidth) > 0.5 {
+        if yandexAdView != nil, abs(targetWidth - lastAdWidth) > 0.5 {
             yandexAdView?.removeFromSuperview()
             yandexAdView = nil
+            screen.adView = nil
             setupAdaptiveAdBanner()
         }
     }

@@ -1,0 +1,12 @@
+{
+  "images" : [
+    {
+      "filename" : "IlloWelcome.png",
+      "idiom" : "universal"
+    }
+  ],
+  "info" : {
+    "author" : "xcode",
+    "version" : 1
+  }
+}

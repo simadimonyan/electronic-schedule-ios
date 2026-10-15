@@ -7,106 +7,58 @@
 
 import UIKit
 import SwiftSoup
-import Lottie
 import UserNotifications
 import MyTrackerSDK
 #if canImport(WidgetKit)
 import WidgetKit
 #endif
 
-class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UITableViewDelegate {
+class TeacherScheduleViewController: UIViewController {
 
-    var tableView: UITableView!
+    /// Экран расписания в новом дизайне (вместо таблицы)
+    let board = ScheduleBoardView()
     var schedule: [DaySchedule] = [] // Сюда будет сохраняться расписание для отображения
     var fullSchedule: [DaySchedule] = [] // Хранит полное расписание на неделю
-    var selectedTeacherURL: String?
-    var errorLabel: UILabel!
-    var animationView: LottieAnimationView!
-    var navigationBar: UINavigationBar!
+    var selectedTeacherURL: String? {
+        didSet { if oldValue != selectedTeacherURL { selectedDayIndex = nil } }
+    }
+
+    /// Вкладка «Неделя» (true) или «Сегодня» (false); nil — как в настройке «Показать всю неделю»
+    var displayWeek: Bool? {
+        didSet { if oldValue != displayWeek { updateTableViewBasedOnSettings(animated: true) } }
+    }
+    /// Выбранный в полосе день (Пн = 0); nil — сегодня
+    private var selectedDayIndex: Int?
+    /// Последняя загрузка не удалась, показываем кеш
+    private var isOffline = false
+    /// Идёт первая загрузка, данных ещё нет
+    private var isLoading = false
+    private var didShowError = false
+
+    // Переходы, которыми управляет MainViewController
+    var onSelectGroup: (() -> Void)?
+    var onOpenWeek: (() -> Void)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
-        view.backgroundColor = .systemGroupedBackground
+        view.backgroundColor = DS.Color.bg
 
-        // Настройка таблицы
-        tableView = UITableView(frame: .zero, style: .grouped)
-        tableView.translatesAutoresizingMaskIntoConstraints = false
-        tableView.dataSource = self
-        tableView.delegate = self
-        tableView.register(LessonTableViewCell.self, forCellReuseIdentifier: "LessonCell")
-        tableView.backgroundColor = .systemGroupedBackground
-        tableView.separatorStyle = .none
-        tableView.showsVerticalScrollIndicator = false // Убираем индикатор скролла
-        
-        // Включаем автоматическую высоту ячеек
-        tableView.rowHeight = UITableView.automaticDimension
-        tableView.estimatedRowHeight = 150
+        board.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(board)
+        board.pinEdges(to: view)
 
-        view.addSubview(tableView)
-
-        // Измените значение константы на величину, на которую хотите поднять таблицу
-        let topOffset: CGFloat = 0 // Поднимаем таблицу на 0 пикселей
-
-        NSLayoutConstraint.activate([
-            tableView.topAnchor.constraint(equalTo: view.topAnchor, constant: topOffset),
-            tableView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
-            tableView.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            tableView.trailingAnchor.constraint(equalTo: view.trailingAnchor)
-        ])
-
-        // Текст при ошибке
-        errorLabel = UILabel()
-        errorLabel.translatesAutoresizingMaskIntoConstraints = false
-        errorLabel.textAlignment = .center
-        errorLabel.numberOfLines = 0
-        errorLabel.isHidden = true
-        view.addSubview(errorLabel)
-        
-    
-        let mainText = "Что-то пошло не так"
-        let attributedText = NSMutableAttributedString(string: mainText, attributes: [
-            .font: UIFont.boldSystemFont(ofSize: 30),
-            .foregroundColor: UIColor.label
-        ])
-        let paragraphStyle = NSMutableParagraphStyle()
-        paragraphStyle.alignment = .center
-        attributedText.addAttribute(.paragraphStyle, value: paragraphStyle, range: NSRange(location: 0, length: mainText.count))
-        errorLabel.attributedText = attributedText
-
-        NSLayoutConstraint.activate([
-            errorLabel.leadingAnchor.constraint(equalTo: view.leadingAnchor, constant: 20),
-            errorLabel.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -20),
-            errorLabel.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: 20) // Поднимаем текст повыше
-        ])
-
-        // Настройка AnimationView для отображения Lottie анимации
-        animationView = LottieAnimationView(name: "error_animation") // Замените "error_animation" на имя вашего Lottie файла
-        animationView.translatesAutoresizingMaskIntoConstraints = false
-        animationView.contentMode = .scaleAspectFit
-        animationView.loopMode = .loop
-        animationView.isHidden = true
-        view.addSubview(animationView)
-
-        NSLayoutConstraint.activate([
-            animationView.centerXAnchor.constraint(equalTo: view.centerXAnchor),
-            animationView.topAnchor.constraint(equalTo: errorLabel.bottomAnchor, constant: 20),
-            animationView.widthAnchor.constraint(equalToConstant: 350), // Увеличиваем размер анимации
-            animationView.heightAnchor.constraint(equalToConstant: 350) // Увеличиваем размер анимации
-        ])
-
-        // Добавляем кнопку настроек в заголовок таблицы
-        let settingsButton = UIButton(type: .system)
-        settingsButton.setImage(UIImage(systemName: "gearshape"), for: .normal)
-        settingsButton.tintColor = .systemBlue
-        settingsButton.addTarget(self, action: #selector(openSettings), for: .touchUpInside)
-        settingsButton.translatesAutoresizingMaskIntoConstraints = false
-
-        view.addSubview(settingsButton)
-
-        NSLayoutConstraint.activate([
-            settingsButton.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: -16),
-            settingsButton.topAnchor.constraint(equalTo: view.safeAreaLayoutGuide.topAnchor, constant: -5) // Поднимаем кнопку выше
-        ])
+        board.onSelectGroup = { [weak self] in self?.onSelectGroup?() }
+        board.onOpenWeek = { [weak self] in self?.onOpenWeek?() }
+        board.onRetry = { [weak self] in
+            self?.isOffline = false
+            self?.loadTimetableData()
+        }
+        board.onSelectDay = { [weak self] index in
+            guard let self = self else { return }
+            self.selectedDayIndex = index
+            self.renderBoard(animated: true)
+        }
+        board.onParity = { [weak self] parity in self?.changeWeekParity(to: parity) }
 
         requestNotificationPermission()
         listScheduledNotifications()
@@ -116,6 +68,8 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
         
         // Регистрируемся на нотификацию для смены режима
         NotificationCenter.default.addObserver(self, selector: #selector(handleModeChange), name: Notification.Name("modeChanged"), object: nil)
+
+        renderBoard(animated: false)
     }
     
     deinit {
@@ -125,9 +79,6 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
     @objc func reloadSchedule() {
         // Очищаем расписание перед загрузкой, чтобы избежать обращения к старым индексам
         schedule = []
-        DispatchQueue.main.async {
-            self.tableView.reloadData()
-        }
         loadTimetableData()
         // updateTableViewBasedOnSettings() будет вызван внутри loadTimetableData() после загрузки данных
     }
@@ -238,6 +189,9 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
             updateTableViewBasedOnSettings()
         }
         
+        // Данных нет — показываем заглушку загрузки
+        setLoading(fullSchedule.isEmpty)
+
         let isSyncEnabled = UserDefaults.standard.bool(forKey: "syncWeekEnabled")
         if isSyncEnabled {
             ScheduleRepository.shared.getWeekCount { result in
@@ -250,6 +204,7 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                         case .success(let items):
                             let weekSchedule = self.mapAPIScheduleToWeek(items)
                             DispatchQueue.main.async {
+                                self.isOffline = false
                                 self.fullSchedule = weekSchedule
                                 self.updateTableViewBasedOnSettings()
                             }
@@ -257,6 +212,8 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                             // При ошибке сети не показываем ошибку, если есть кеш
                             if self.fullSchedule.isEmpty {
                                 self.showError()
+                            } else {
+                                self.showOfflineCache()
                             }
                         }
                     }
@@ -268,6 +225,7 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                         case .success(let items):
                             let weekSchedule = self.mapAPIScheduleToWeek(items)
                             DispatchQueue.main.async {
+                                self.isOffline = false
                                 self.fullSchedule = weekSchedule
                                 self.updateTableViewBasedOnSettings()
                             }
@@ -275,6 +233,8 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                             // При ошибке сети не показываем ошибку, если есть кеш
                             if self.fullSchedule.isEmpty {
                                 self.showError()
+                            } else {
+                                self.showOfflineCache()
                             }
                         }
                     }
@@ -288,6 +248,7 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                 case .success(let items):
                     let weekSchedule = self.mapAPIScheduleToWeek(items)
                     DispatchQueue.main.async {
+                        self.isOffline = false
                         self.fullSchedule = weekSchedule
                         self.updateTableViewBasedOnSettings()
                     }
@@ -295,6 +256,8 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
                     // При ошибке сети не показываем ошибку, если есть кеш
                     if self.fullSchedule.isEmpty {
                         self.showError()
+                    } else {
+                        self.showOfflineCache()
                     }
                 }
             }
@@ -303,15 +266,36 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
 
     func showError() {
         DispatchQueue.main.async {
-            self.errorLabel.isHidden = false
-            self.animationView.isHidden = false
-            self.animationView.play()
-            self.tableView.isHidden = true
+            self.isLoading = false
+            self.didShowError = true
+            self.renderBoard(animated: false)
         }
     }
 
-    func updateTableViewBasedOnSettings() {
-        let isFullScheduleEnabled = UserDefaults.standard.bool(forKey: "showFullSchedule")
+    /// Сеть недоступна, но расписание есть в кеше — показываем его с плашкой «Нет подключения»
+    private func showOfflineCache() {
+        DispatchQueue.main.async {
+            self.isLoading = false
+            self.isOffline = true
+            self.renderBoard(animated: false)
+        }
+    }
+
+    private func setLoading(_ loading: Bool) {
+        DispatchQueue.main.async {
+            guard self.isLoading != loading else { return }
+            self.isLoading = loading
+            if loading { self.didShowError = false }
+            self.renderBoard(animated: false)
+        }
+    }
+
+    private var isWeekDisplay: Bool {
+        displayWeek ?? UserDefaults.standard.bool(forKey: "showFullSchedule")
+    }
+
+    func updateTableViewBasedOnSettings(animated: Bool = false) {
+        let isFullScheduleEnabled = isWeekDisplay
         if isFullScheduleEnabled {
             schedule = fullSchedule // Показываем расписание на всю неделю
             MRMyTracker.trackEvent(name: "Открыть расписание преподавателя на неделю")
@@ -321,20 +305,58 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
         }
 
         DispatchQueue.main.async {
-            self.tableView.reloadData()
             // Убедитесь, что текст отображается, если расписание пустое
-            if self.schedule.isEmpty {
-                self.showError()
+            if self.fullSchedule.isEmpty {
+                if !self.isLoading { self.didShowError = true }
+                self.renderBoard(animated: animated)
             } else {
-                self.errorLabel.isHidden = true
-                self.animationView.isHidden = true
-                self.animationView.stop()
-                self.tableView.isHidden = false
+                self.isLoading = false
+                self.didShowError = false
+                self.renderBoard(animated: animated)
                 
                 // Планируем уведомления для загруженного расписания
                 self.scheduleNotifications()
             }
         }
+    }
+
+    /// Собирает состояние экрана из данных контроллера
+    private func renderBoard(animated: Bool) {
+        guard isViewLoaded else { return }
+        var input = ScheduleBoardView.Input()
+        let teacher = selectedTeacherURL ?? UserDefaults.standard.string(forKey: "selectedTeacherURL") ?? ""
+        input.who = teacher
+        input.isTeacher = true
+        input.hasSelection = !teacher.isEmpty
+        input.days = fullSchedule
+        input.offline = isOffline
+        input.mode = isWeekDisplay ? .week : .day
+        input.selectedDay = selectedDayIndex ?? ScheduleTime.weekdayIndex(of: Date())
+        input.parity = UserDefaults.standard.bool(forKey: "isOddWeek") ? 1 : 2
+        input.parityLocked = UserDefaults.standard.bool(forKey: "syncWeekEnabled")
+        if fullSchedule.isEmpty {
+            input.phase = (isLoading && !didShowError) ? .loading : (didShowError || !input.hasSelection ? .error : .loading)
+        } else {
+            input.phase = .content
+        }
+        board.render(input, animated: animated)
+    }
+
+    /// Сбросить выбор дня на сегодня и прокрутить наверх (повторное нажатие на вкладку)
+    func resetToToday() {
+        selectedDayIndex = nil
+        board.scrollToTop()
+        renderBoard(animated: true)
+    }
+
+    /// Смена чётности недели — то же, что переключатель «Сменить неделю» в настройках
+    private func changeWeekParity(to parity: Int) {
+        guard !UserDefaults.standard.bool(forKey: "syncWeekEnabled") else { return }
+        let isOdd = parity == 1
+        guard UserDefaults.standard.bool(forKey: "isOddWeek") != isOdd else { return }
+        UserDefaults.standard.set(isOdd, forKey: "isOddWeek")
+        MRMyTracker.trackEvent(name: isOdd ? "Переключить расписание на первую неделю" : "Переключить расписание на вторую неделю")
+        NotificationCenter.default.post(name: Notification.Name("reloadSchedule"), object: nil)
     }
     
     private func scheduleNotifications() {
@@ -425,9 +447,6 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
             print("No schedule found for today.")
         }
 
-        DispatchQueue.main.async {
-            self.tableView.reloadData()
-        }
     }
 
     func getTodaysSchedule() -> DaySchedule? {
@@ -762,86 +781,4 @@ class TeacherScheduleViewController: UIViewController, UITableViewDataSource, UI
         let colors: [UIColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemTeal, .systemBlue, .systemPurple, .systemGray]
         return colors[number % colors.count]
     }
-
-    // MARK: - UITableViewDataSource
-
-    func numberOfSections(in tableView: UITableView) -> Int {
-        return schedule.count
-    }
-
-    func tableView(_ tableView: UITableView, titleForHeaderInSection section: Int) -> String? {
-        guard section < schedule.count else { return nil }
-        let daySchedule = schedule[section]
-        return daySchedule.day
-    }
-
-    func tableView(_ tableView: UITableView, numberOfRowsInSection section: Int) -> Int {
-        guard section < schedule.count else { return 0 }
-        return schedule[section].lessons.count
-    }
-
-    func tableView(_ tableView: UITableView, cellForRowAt indexPath: IndexPath) -> UITableViewCell {
-        let cell = tableView.dequeueReusableCell(withIdentifier: "LessonCell", for: indexPath) as! LessonTableViewCell
-        
-        guard indexPath.section < schedule.count,
-              indexPath.row < schedule[indexPath.section].lessons.count else {
-            // Возвращаем пустую ячейку, если индексы некорректные
-            return cell
-        }
-        
-        let lesson = schedule[indexPath.section].lessons[indexPath.row]
-        let daySchedule = schedule[indexPath.section]
-
-        // Проверяем, является ли урок фиктивным (аналогичным воскресенью)
-        let isPlaceholder = lesson.subject == "Сегодня выходной. Наслаждайтесь отдыхом!"
-        cell.configure(with: lesson, isPlaceholder: isPlaceholder)
-        return cell
-    }
-
-    func tableView(_ tableView: UITableView, viewForHeaderInSection section: Int) -> UIView? {
-        guard section < schedule.count else { return nil }
-        
-        // Создаем кастомный view для заголовка
-        let headerView = UIView()
-        headerView.backgroundColor = .systemGroupedBackground
-
-        // Создаем и настраиваем лейбл для заголовка
-        let titleLabel = UILabel()
-        titleLabel.translatesAutoresizingMaskIntoConstraints = false
-        titleLabel.textColor = .label
-        titleLabel.font = .boldSystemFont(ofSize: 15)  // Сделать текст жирным
-        let daySchedule = schedule[section]
-        titleLabel.text = daySchedule.day  // Только день недели
-
-        // Добавляем лейбл на headerView
-        headerView.addSubview(titleLabel)
-
-        // Устанавливаем авто-расставление для лейбла
-        NSLayoutConstraint.activate([
-            titleLabel.leadingAnchor.constraint(equalTo: headerView.leadingAnchor, constant: 16),
-            titleLabel.trailingAnchor.constraint(equalTo: headerView.trailingAnchor, constant: -16),
-            titleLabel.topAnchor.constraint(equalTo: headerView.topAnchor, constant: 8),
-            titleLabel.bottomAnchor.constraint(equalTo: headerView.bottomAnchor, constant: -8)
-        ])
-
-        return headerView
-    }
-
-    // MARK: - UITableViewDelegate
-    func tableView(_ tableView: UITableView, heightForRowAt indexPath: IndexPath) -> CGFloat {
-        guard indexPath.section < schedule.count,
-              indexPath.row < schedule[indexPath.section].lessons.count else {
-            return UITableView.automaticDimension
-        }
-        
-        let lesson = schedule[indexPath.section].lessons[indexPath.row]
-        
-        // Для placeholder ячеек (выходной день) используем фиксированную высоту
-        if lesson.subject == "Сегодня выходной. Наслаждайтесь отдыхом!" {
-            return 150 // Увеличенная высота для анимации
-        }
-        
-        // Для обычных ячеек используем автоматическую высоту
-        return UITableView.automaticDimension
-    }
-} 
+}
