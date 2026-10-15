@@ -231,10 +231,12 @@ class ViewController: UIViewController {
         }
     }
 
-    /// «24-Бк-ПИ-01» → «ПИ»
+    /// «24-Бк-ПИ-01» → «ПИ», «26-ЗГД-01» → «ЗГ»
     private static func badge(for name: String) -> String {
-        let parts = name.split(separator: "-")
-        if parts.count >= 3 { return String(parts[2].prefix(2)).uppercased() }
+        // Берём буквенную часть шифра (направление), а не год или номер
+        let parts = name.split(separator: "-").map(String.init)
+        let letters = parts.filter { part in part.contains { $0.isLetter } }
+        if let code = letters.last { return String(code.prefix(2)).uppercased() }
         return String(name.prefix(2)).uppercased()
     }
 

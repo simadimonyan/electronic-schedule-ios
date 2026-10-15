@@ -432,7 +432,7 @@ final class ScheduleBoardView: UIView {
             seg.selectedIndex = parity == 1 ? 0 : 1
             seg.isEnabled = !input.parityLocked
             seg.addTarget(self, action: #selector(paritySegmentChanged(_:)), for: .valueChanged)
-            seg.setContentHuggingPriority(.required, for: .horizontal)
+            seg.widthAnchor.constraint(equalToConstant: 88).isActive = true
             titleRow.addArrangedSubview(seg)
         }
         add(titleRow, spacingAfterPrevious: 10)
@@ -1262,6 +1262,8 @@ final class LessonChip: UIView {
         translatesAutoresizingMaskIntoConstraints = false
         backgroundColor = kind.chipBg
         let label = UILabel.ds(text, font: DS.Font.text(fontSize, .semibold), color: kind.chipFg)
+        label.setContentHuggingPriority(.required, for: .horizontal)
+        label.setContentCompressionResistancePriority(.required, for: .horizontal)
         addSubview(label)
         label.pinEdges(to: self, insets: UIEdgeInsets(top: vertical, left: horizontal, bottom: vertical, right: horizontal))
         setContentHuggingPriority(.required, for: .horizontal)
@@ -1475,6 +1477,8 @@ final class WeekDaySection: UIView {
             empty.borderColor = DS.Color.borderStrong
             let moon = UIImageView(image: DS.symbol("moon", size: 15, weight: .medium))
             moon.tintColor = DS.Color.soft
+            moon.contentMode = .center
+            moon.fixSize(width: 18, height: 18)
             let row = UIStackView.ds(.horizontal, spacing: 10, alignment: .center, views: [moon, UILabel.ds("Выходной", font: DS.Font.text(13.5), color: DS.Color.soft)])
             empty.addSubview(row)
             row.pinEdges(to: empty, insets: UIEdgeInsets(top: 14, left: 14, bottom: 14, right: 14))

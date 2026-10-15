@@ -97,7 +97,10 @@ class TeacherViewController: UIViewController {
         let query = screen.query.trimmingCharacters(in: .whitespaces).lowercased()
         let source = teachers.isEmpty ? allTeachers : teachers
         let current = selectedTeacher ?? UserDefaults.standard.string(forKey: "selectedTeacher")
-        let filtered = source.filter { query.isEmpty || $0.name.lowercased().contains(query) }
+        let filtered = source
+            .filter { !$0.name.trimmingCharacters(in: .whitespaces).isEmpty }
+            .filter { query.isEmpty || $0.name.lowercased().contains(query) }
+            .sorted { $0.name.localizedCompare($1.name) == .orderedAscending }
         // Группировка по первой букве фамилии
         var byLetter: [String: [Teacher]] = [:]
         for teacher in filtered {

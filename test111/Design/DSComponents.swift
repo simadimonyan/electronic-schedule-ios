@@ -647,6 +647,8 @@ final class DSListRow: DSTapControl {
         if chevron || externalLink {
             self.chevron.image = DS.symbol(externalLink ? "arrow.up.right.square" : "chevron.right", size: externalLink ? 13 : 12, weight: .semibold)
             self.chevron.tintColor = DS.Color.faint
+            self.chevron.contentMode = .center
+            self.chevron.fixSize(width: 16, height: 16)
             accessoryContainer.addArrangedSubview(self.chevron)
         }
 
