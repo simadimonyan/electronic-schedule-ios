@@ -18,17 +18,24 @@ class TeacherScheduleViewController: UIViewController {
     /// Экран расписания в новом дизайне (вместо таблицы)
     let board = ScheduleBoardView()
     var schedule: [DaySchedule] = [] // Сюда будет сохраняться расписание для отображения
-    var fullSchedule: [DaySchedule] = [] // Хранит полное расписание на неделю
+    var fullSchedule: [DaySchedule] = [] { // Хранит полное расписание на неделю
+        didSet { dateResolver.store(fullSchedule, parity: ScheduleDateResolver.currentParity) }
+    }
     var selectedTeacherURL: String? {
-        didSet { if oldValue != selectedTeacherURL { selectedDayIndex = nil } }
+        didSet { if oldValue != selectedTeacherURL { resetDateResolver() } }
     }
 
     /// Вкладка «Неделя» (true) или «Сегодня» (false); nil — как в настройке «Показать всю неделю»
     var displayWeek: Bool? {
         didSet { if oldValue != displayWeek { updateTableViewBasedOnSettings(animated: true) } }
     }
-    /// Выбранный в полосе день (Пн = 0); nil — сегодня
-    private var selectedDayIndex: Int?
+    /// Выбранная в полосе или календаре дата; nil — сегодня
+    private var selectedDate: Date?
+    /// Пары на любую дату по шаблонам недель 1/2
+    private let dateResolver = ScheduleDateResolver()
+    private var loadingParities = Set<Int>()
+    private var failedParities = Set<Int>()
+    private weak var calendarSheet: ScheduleCalendarViewController?
     /// Последняя загрузка не удалась, показываем кеш
     private var isOffline = false
     /// Идёт первая загрузка, данных ещё нет
@@ -38,6 +45,7 @@ class TeacherScheduleViewController: UIViewController {
     // Переходы, которыми управляет MainViewController
     var onSelectGroup: (() -> Void)?
     var onOpenWeek: (() -> Void)?
+    var onOpenDay: (() -> Void)?
 
     override func viewDidLoad() {
         super.viewDidLoad()
@@ -55,9 +63,19 @@ class TeacherScheduleViewController: UIViewController {
         }
         board.onSelectDay = { [weak self] index in
             guard let self = self else { return }
-            self.selectedDayIndex = index
+            let monday = ScheduleDateResolver.monday(of: self.selectedDate ?? Date())
+            let date = Calendar.current.date(byAdding: .day, value: index, to: monday) ?? monday
+            self.selectedDate = Calendar.current.isDateInToday(date) ? nil : date
             self.renderBoard(animated: true)
         }
+        board.onBackToToday = { [weak self] in self?.resetToToday() }
+        board.onRetryWeek = { [weak self] in
+            guard let self = self else { return }
+            self.failedParities.removeAll()
+            self.renderBoard(animated: false)
+        }
+        board.onOpenCalendar = { [weak self] in self?.openCalendar() }
+        board.onOpenDatePicker = { [weak self] in self?.openDatePicker() }
         board.onParity = { [weak self] parity in self?.changeWeekParity(to: parity) }
 
         requestNotificationPermission()
@@ -79,6 +97,7 @@ class TeacherScheduleViewController: UIViewController {
     @objc func reloadSchedule() {
         // Очищаем расписание перед загрузкой, чтобы избежать обращения к старым индексам
         schedule = []
+        resetDateResolver()
         loadTimetableData()
         // updateTableViewBasedOnSettings() будет вызван внутри loadTimetableData() после загрузки данных
     }
@@ -87,6 +106,7 @@ class TeacherScheduleViewController: UIViewController {
         // При смене режима очищаем расписание, чтобы избежать показа данных из другого режима
         fullSchedule = []
         schedule = []
+        resetDateResolver()
         print("🔄 TeacherScheduleViewController: Очищено расписание при смене режима")
     }
 
@@ -331,20 +351,25 @@ class TeacherScheduleViewController: UIViewController {
         input.days = fullSchedule
         input.offline = isOffline
         input.mode = isWeekDisplay ? .week : .day
-        input.selectedDay = selectedDayIndex ?? ScheduleTime.weekdayIndex(of: Date())
-        input.parity = UserDefaults.standard.bool(forKey: "isOddWeek") ? 1 : 2
+        input.selectedDay = ScheduleTime.weekdayIndex(of: Date())
+        input.parity = ScheduleDateResolver.currentParity
         input.parityLocked = UserDefaults.standard.bool(forKey: "syncWeekEnabled")
+        var missingParity: Int?
+        if input.mode == .day {
+            missingParity = dateResolver.fillDay(&input, date: selectedDate ?? Date(), currentWeek: fullSchedule, failed: failedParities)
+        }
         if fullSchedule.isEmpty {
             input.phase = (isLoading && !didShowError) ? .loading : (didShowError || !input.hasSelection ? .error : .loading)
         } else {
-            input.phase = .content
+            input.phase = missingParity == nil ? .content : .loading
         }
         board.render(input, animated: animated)
+        if let parity = missingParity, !fullSchedule.isEmpty { loadWeekTemplate(parity) }
     }
 
     /// Сбросить выбор дня на сегодня и прокрутить наверх (повторное нажатие на вкладку)
     func resetToToday() {
-        selectedDayIndex = nil
+        selectedDate = nil
         board.scrollToTop()
         renderBoard(animated: true)
     }
@@ -780,5 +805,62 @@ class TeacherScheduleViewController: UIViewController {
     func getColor(for number: Int) -> UIColor {
         let colors: [UIColor] = [.systemRed, .systemOrange, .systemYellow, .systemGreen, .systemTeal, .systemBlue, .systemPurple, .systemGray]
         return colors[number % colors.count]
+    }
+
+    // MARK: - Календарь и выбор даты
+
+    private func resetDateResolver() {
+        dateResolver.reset()
+        loadingParities.removeAll()
+        failedParities.removeAll()
+        selectedDate = nil
+    }
+
+    /// Догрузить шаблон недели другой чётности (сеть и кеш — как у основной загрузки)
+    private func loadWeekTemplate(_ parity: Int) {
+        guard !dateResolver.hasTemplate(parity), !loadingParities.contains(parity),
+              let teacherName = selectedTeacherURL, !teacherName.isEmpty else { return }
+        loadingParities.insert(parity)
+        ScheduleRepository.shared.getTeacherSchedule(teacher: teacherName, weekCount: parity) { result in
+            DispatchQueue.main.async {
+                self.loadingParities.remove(parity)
+                guard teacherName == self.selectedTeacherURL else { return }
+                switch result {
+                case .success(let items):
+                    self.dateResolver.store(self.mapAPIScheduleToWeek(items), parity: parity)
+                case .failure:
+                    self.failedParities.insert(parity)
+                }
+                self.renderBoard(animated: false)
+                self.calendarSheet?.reloadDays()
+            }
+        }
+    }
+
+    /// Открыть расписание выбранной даты на экране «Сегодня»
+    private func showDate(_ date: Date) {
+        MRMyTracker.trackEvent(name: "Открыть расписание преподавателя на дату из календаря")
+        selectedDate = Calendar.current.isDateInToday(date) ? nil : date
+        board.scrollToTop()
+        renderBoard(animated: true)
+        onOpenDay?()
+    }
+
+    private func openCalendar() {
+        guard !fullSchedule.isEmpty else { return }
+        let sheet = ScheduleCalendarViewController(resolver: dateResolver, selectedDate: selectedDate ?? Date())
+        sheet.onNeedParity = { [weak self] parity in self?.loadWeekTemplate(parity) }
+        sheet.onPick = { [weak self] date in self?.showDate(date) }
+        calendarSheet = sheet
+        sheet.presentAsSheet(from: self)
+    }
+
+    private func openDatePicker() {
+        guard !fullSchedule.isEmpty else { return }
+        let range = dateResolver.monthRange()
+        let last = Calendar.current.date(byAdding: DateComponents(month: 1, day: -1), to: range.last) ?? range.last
+        let picker = ScheduleDatePickerViewController(selectedDate: selectedDate ?? Date(), minimum: range.first, maximum: last)
+        picker.onPick = { [weak self] date in self?.showDate(date) }
+        picker.presentAsSheet(from: self)
     }
 }
